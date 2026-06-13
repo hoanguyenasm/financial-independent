@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Donut, AreaChart } from '../ui.jsx';
-import { getAccounts } from '../lib/api.ts';
+import { getAccounts, createAccount } from '../lib/api.ts';
 
 function typeToClass(type) {
   if (type === 'crypto') return 'crypto';
@@ -22,6 +22,7 @@ export function AccountsScreen({ go, currency, household }) {
   const [range, setRange] = useState('24');
 
   const [liveAccounts, setLiveAccounts] = useState(DATA.ACCOUNTS);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     getAccounts().then(data => {
@@ -61,6 +62,11 @@ export function AccountsScreen({ go, currency, household }) {
       <div className="page-h">
         <h1>Accounts & Net Worth</h1>
         <span className="sub">{liveAccounts.filter(a => a.is_active).length} active accounts · {currency} base</span>
+        <div style={{ marginLeft: 'auto' }}>
+          <button className="btn ghost sm" onClick={() => setShowCreateModal(true)}>
+            <Icon n="plus" s={15} />Add account
+          </button>
+        </div>
       </div>
 
       {/* NET WORTH + ALLOCATION */}
@@ -125,6 +131,24 @@ export function AccountsScreen({ go, currency, household }) {
         </div>
       </section>
 
+      {showCreateModal && (
+        <CreateAccountModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={account => {
+            setLiveAccounts(prev => [...prev, {
+              id: account.id,
+              name: account.name,
+              type: account.type,
+              orig_cur: account.currency,
+              cls: typeToClass(account.type),
+              base: 0,
+              orig_bal: 0,
+              is_active: account.is_active,
+            }]);
+          }}
+        />
+      )}
+
       {/* PER-ASSET PERFORMANCE */}
       <section className="card">
         <div className="card-h"><div className="t"><b>Holdings</b> · performance</div></div>
@@ -169,6 +193,85 @@ export function AccountsScreen({ go, currency, household }) {
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+function CreateAccountModal({ onClose, onCreated }) {
+  const [name, setName] = useState('');
+  const [type, setType] = useState('bank');
+  const [acctCurrency, setAcctCurrency] = useState('EUR');
+  const [institution, setInstitution] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!name.trim()) { setError('Name is required'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const account = await createAccount({
+        name: name.trim(),
+        type,
+        currency: acctCurrency.trim() || 'EUR',
+        institution: institution.trim() || undefined,
+      });
+      onCreated(account);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Could not connect to server');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="row" style={{ gap: 11, marginBottom: 18 }}>
+          <span style={{ width: 38, height: 38, borderRadius: 11, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon n="wallet" s={20} c="var(--accent)" />
+          </span>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>New account</div>
+            <div className="kpi-sub">Add a bank, brokerage, or asset account</div>
+          </div>
+          <button className="btn icon" style={{ marginLeft: 'auto', padding: 4, background: 'transparent', border: 0 }} onClick={onClose}>
+            <Icon n="x" s={16} />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label className="fld">Name *</label>
+            <input className="inp" placeholder="e.g. Comdirect Checking" value={name} onChange={e => setName(e.target.value)} autoFocus />
+          </div>
+          <div>
+            <label className="fld">Type</label>
+            <select className="inp" value={type} onChange={e => setType(e.target.value)}>
+              {[['bank', 'Bank'], ['brokerage', 'Brokerage'], ['crypto', 'Crypto'], ['realestate', 'Real estate'], ['gold', 'Gold']].map(([v, l]) =>
+                <option key={v} value={v}>{l}</option>
+              )}
+            </select>
+          </div>
+          <div>
+            <label className="fld">Currency</label>
+            <input className="inp mono" placeholder="EUR" value={acctCurrency} onChange={e => setAcctCurrency(e.target.value.toUpperCase())} maxLength={3} />
+          </div>
+          <div>
+            <label className="fld">Institution <span className="fx">(optional)</span></label>
+            <input className="inp" placeholder="e.g. Deutsche Bank" value={institution} onChange={e => setInstitution(e.target.value)} />
+          </div>
+        </div>
+
+        {error && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--neg)', fontWeight: 600 }}>{error}</div>}
+
+        <div className="row" style={{ gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn primary" disabled={saving} onClick={handleSubmit}>
+            {saving ? 'Saving…' : 'Create account'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
