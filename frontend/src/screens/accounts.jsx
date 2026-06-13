@@ -2,15 +2,43 @@
    Screen — Accounts & Net Worth
    ============================================================ */
 /* eslint-disable */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Donut, AreaChart } from '../ui.jsx';
+import { getAccounts } from '../lib/api.ts';
+
+function typeToClass(type) {
+  if (type === 'crypto') return 'crypto';
+  if (type === 'realestate' || type === 'real_estate') return 'realestate';
+  if (type === 'gold') return 'gold';
+  if (type === 'brokerage' || type === 'investment' || type === 'stocks') return 'stocks';
+  return 'bank';
+}
 
 export function AccountsScreen({ go, currency, household }) {
   const M = (v, dec) => FMT.display(currency, v, dec);
   const MC = (v) => FMT.displayCompact(currency, v);
   const S = DATA.SUMMARY;
   const [range, setRange] = useState('24');
+
+  const [liveAccounts, setLiveAccounts] = useState(DATA.ACCOUNTS);
+
+  useEffect(() => {
+    getAccounts().then(data => {
+      if (data.length > 0) {
+        setLiveAccounts(data.map(a => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          orig_cur: a.currency,
+          cls: typeToClass(a.type),
+          base: 0,
+          orig_bal: 0,
+          is_active: a.is_active,
+        })));
+      }
+    }).catch(() => {});
+  }, []);
 
   const nw = DATA.NW_SERIES;
   const series = range === '12' ? nw.slice(-12) : nw;
@@ -32,7 +60,7 @@ export function AccountsScreen({ go, currency, household }) {
     <div className="page rise">
       <div className="page-h">
         <h1>Accounts & Net Worth</h1>
-        <span className="sub">{DATA.ACCOUNTS.filter(a => a.is_active).length} active accounts · {currency} base</span>
+        <span className="sub">{liveAccounts.filter(a => a.is_active).length} active accounts · {currency} base</span>
       </div>
 
       {/* NET WORTH + ALLOCATION */}
@@ -78,7 +106,7 @@ export function AccountsScreen({ go, currency, household }) {
       <section className="card" style={{ marginBottom: 18 }}>
         <div className="card-h"><div className="t"><b>Accounts</b></div><span className="kpi-sub" style={{ marginLeft: 'auto' }}>balance · original currency</span></div>
         <div className="gridcols-3">
-          {DATA.ACCOUNTS.map(a => (
+          {liveAccounts.map(a => (
             <div key={a.id} className="clickable" onClick={() => go('transactions', { account: a.id })}
               style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 14, borderRadius: 14, border: '1px solid var(--border)', background: 'var(--surface-2)', opacity: a.is_active ? 1 : .5 }}>
               <span style={{ width: 38, height: 38, borderRadius: 11, flex: '0 0 auto', background: `color-mix(in srgb, var(--c-${a.cls}) 18%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
