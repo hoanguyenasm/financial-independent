@@ -5,10 +5,13 @@
 import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
+import { getSettings, updateSettings } from '../lib/api.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'import');
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
+  // sync base currency from backend when it is reachable; mock mode otherwise
+  useEffect(() => { getSettings().then(s => s.base_currency && setCurrency(s.base_currency)).catch(() => {}); }, []);
   return (
     <div className="page rise" style={{ maxWidth: 1100 }}>
       <div className="page-h">
@@ -171,7 +174,7 @@ function SettingsTab({ currency, setCurrency }) {
         <label className="fld">Household base currency</label>
         <div className="row" style={{ gap: 8 }}>
           {['EUR', 'USD', 'VND'].map(c => (
-            <button key={c} className={'btn ' + (currency === c ? 'primary' : 'ghost') + ' sm'} onClick={() => setCurrency(c)}>{FX.sym[c]} {c}</button>
+            <button key={c} className={'btn ' + (currency === c ? 'primary' : 'ghost') + ' sm'} onClick={() => { setCurrency(c); updateSettings(c).catch(() => {}); }}>{FX.sym[c]} {c}</button>
           ))}
           <span className="kpi-sub" style={{ marginLeft: 'auto' }}>All figures convert instantly</span>
         </div>

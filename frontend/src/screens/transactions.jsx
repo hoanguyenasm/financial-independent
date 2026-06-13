@@ -5,6 +5,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Avatar, Check, Dropdown, DDItem, useToast } from '../ui.jsx';
+import { patchTransaction } from '../lib/api.ts';
 
 export function TransactionsScreen({ go, currency, household, initialFilter, registerSetReview }) {
   const [tx, setTx] = useState(() => DATA.TX.map(t => ({ ...t })));
@@ -50,6 +51,11 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
 
   function applyCat(ids, catId) {
     setTx(list => list.map(t => ids.includes(t.id) ? { ...t, category: catId, needs_review: false } : t));
+    // best-effort sync to the backend; mock ids ('tx1003') have no DB row yet
+    ids.forEach(id => {
+      const n = parseInt(String(id).replace(/\D/g, ''), 10);
+      if (!Number.isNaN(n)) patchTransaction(n, { category: catId, needs_review: false }).catch(() => {});
+    });
   }
   function onPickCat(catId) {
     const ids = menu.ids;
