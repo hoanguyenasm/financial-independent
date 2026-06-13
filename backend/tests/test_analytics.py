@@ -89,6 +89,27 @@ def test_summary_empty_db(client):
     }
 
 
+def test_expense_by_category(client):
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    _tx(client, user_id, account_id, f"{m}-01", -1200.0, "expense", "mortgage")
+    _tx(client, user_id, account_id, f"{m}-02", -300.0, "expense", "supermarket")
+    _tx(client, user_id, account_id, f"{m}-03", -300.0, "expense", "supermarket")
+    _tx(client, user_id, account_id, f"{m}-04", 5000.0, "income", "salary")  # excluded
+
+    response = client.get("/analytics/expense-by-category?months=12")
+    assert response.status_code == 200
+    rows = response.json()
+    cats = {r["category"]: r for r in rows}
+    assert "mortgage" in cats
+    assert cats["mortgage"]["total_base"] == 1200.0
+    assert cats["mortgage"]["txn_count"] == 1
+    assert "supermarket" in cats
+    assert cats["supermarket"]["total_base"] == 600.0
+    assert cats["supermarket"]["txn_count"] == 2
+    assert "salary" not in cats
+
+
 def test_summary_includes_fi_target(client):
     user = client.post("/users", json={"name": "Hoa", "email": "hoa@example.com"}).json()
     goal_payload = {

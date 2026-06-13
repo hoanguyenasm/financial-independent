@@ -44,6 +44,25 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
     ]
 
 
+@router.get("/expense-by-category")
+def expense_by_category(months: int = Query(default=12, ge=1, le=60), db: Session = Depends(get_db)):
+    cutoff = _months_ago(date.today(), months - 1)
+    txs = db.query(Transaction).filter(
+        Transaction.date >= cutoff,
+        Transaction.type.in_(EXPENSE_TYPES)
+    ).all()
+    totals: dict[str, float] = defaultdict(float)
+    counts: dict[str, int] = defaultdict(int)
+    for tx in txs:
+        cat = tx.category or "uncategorized"
+        totals[cat] += abs(_base_amount(tx))
+        counts[cat] += 1
+    return [
+        {"category": cat, "total_base": round(totals[cat], 2), "txn_count": counts[cat]}
+        for cat in sorted(totals, key=lambda c: totals[c], reverse=True)
+    ]
+
+
 @router.get("/summary")
 def summary(db: Session = Depends(get_db)):
     net_worth = sum(
