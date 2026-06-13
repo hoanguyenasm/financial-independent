@@ -2,6 +2,15 @@ import io
 import pytest
 from datetime import date
 
+from app.parsers.pdf_parser import (
+    _parse_ing,
+    _parse_trade_republic,
+    _parse_revolut,
+    _parse_scalable,
+    _parse_amex,
+)
+from app.parsers.models import ParsedRow
+
 pytest.importorskip("reportlab")
 
 from reportlab.lib.pagesizes import A4
@@ -65,3 +74,79 @@ def test_parse_pdf_no_tables_page():
     buf.seek(0)
     rows = parse_pdf(buf)
     assert rows == []
+
+
+# ── text-based parser unit tests ──────────────────────────────────────────────
+
+def test_parse_ing_basic():
+    lines = [
+        "Kontoauszug ING-DiBa",
+        "02.04.2026 Gutschrift Kadir Dora 430,00",
+        "07.04.2026 Echtzeit-überweisung Duc Hoa Nguyen -430,00",
+        "Some other non-matching line",
+    ]
+    rows = _parse_ing(lines)
+    assert len(rows) == 2
+    assert rows[0] == ParsedRow(date=date(2026, 4, 2), description="Gutschrift Kadir Dora", amount=430.0, currency="EUR")
+    assert rows[1].amount == -430.0
+
+
+def test_parse_trade_republic_income_and_expense():
+    lines = [
+        "TRADE REPUBLIC BANK GMBH BRUNNENSTRASSE 19-21 10119 BERLIN",
+        "Cashkonto 5.428,06 € 5.892,02 € 10.673,30 € 646,78 €",
+        "DATUM TYP BESCHREIBUNG ZAHLUNGSEINGANGZAHLUNGSAUSGANG SALDO",
+        "01 Apr.",
+        "Zinsen Interest payment 9,48 € 5.437,54 €",
+        "2026",
+        "02 Apr.",
+        "Handel -Amundi ETF 150,00 € 5.287,54 €",
+        "2026",
+    ]
+    rows = _parse_trade_republic(lines)
+    assert len(rows) == 2
+    assert rows[0].amount > 0  # interest income
+    assert rows[0].date == date(2026, 4, 1)
+    assert rows[1].amount < 0  # investment purchase
+    assert rows[1].date == date(2026, 4, 2)
+
+
+def test_parse_revolut_uses_balance_delta():
+    lines = [
+        "EUR-Kontoauszug",
+        "Revolut Bank UAB",
+        "Konto (Girokonto) 0,32€ 200,00€ 300,00€ 100,32€",
+        "Datum Beschreibung Geldausgang Geldeingang Kontostand",
+        "01.04.2026 Von EUR Flexible Geldmarktfonds 95,00€ 95,32€",
+        "02.04.2026 Apotheke 95,00€ 0,32€",
+    ]
+    rows = _parse_revolut(lines)
+    assert len(rows) == 2
+    assert rows[0].amount == 95.0    # balance went up: income
+    assert rows[1].amount == -95.0   # balance went down: expense
+
+
+def test_parse_scalable_signs():
+    lines = [
+        "Scalable Capital Bank GmbH",
+        "Buchung Wertstellung Beschreibung Betrag",
+        "13.04.2026 13.04.2026 Überweisung +500,00 EUR",
+        "07.04.2026 07.04.2026 Kauf eines Finanzinstruments -150,00 EUR",
+    ]
+    rows = _parse_scalable(lines)
+    assert len(rows) == 2
+    assert rows[0].amount == 500.0
+    assert rows[1].amount == -150.0
+
+
+def test_parse_amex_gutschrift_on_next_line():
+    lines = [
+        "American Express Kontoauszug 2026",
+        "27.04 27.04 ZAHLUNG/ÜBERWEISUNG ERHALTEN BESTEN DANK 1.468,66",
+        "Karten-Nr. xxxx-xxxxxx-01006 GUTSCHRIFT",
+        "22.04 24.04 PAYPAL *SATURN 99,99",
+    ]
+    rows = _parse_amex(lines)
+    assert len(rows) == 2
+    assert rows[0].amount == 1468.66   # GUTSCHRIFT on next line → positive
+    assert rows[1].amount == -99.99    # regular purchase → negative
