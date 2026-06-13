@@ -85,4 +85,19 @@ def test_summary_empty_db(client):
     assert s == {
         "net_worth": 0.0, "passive_income_monthly": 0.0,
         "monthly_expenses": 0.0, "savings_rate": 0.0, "needs_review": 0,
+        "fi_target": 0.0,
     }
+
+
+def test_summary_includes_fi_target(client):
+    user = client.post("/users", json={"name": "Hoa", "email": "hoa@example.com"}).json()
+    goal_payload = {
+        "user_id": user["id"],
+        "target_net_worth": 500000.0,
+        "safe_withdrawal_rate": 0.04,
+        "investment_return_rate": 0.07,
+        "inflation_rate": 0.03,
+    }
+    client.post("/fi-goals", json=goal_payload)
+    s = client.get("/analytics/summary").json()
+    assert s["fi_target"] == 500000.0

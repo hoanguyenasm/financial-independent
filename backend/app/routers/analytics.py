@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 from datetime import date
 from app.database import get_db
-from app.models import Asset, Transaction
+from app.models import Asset, Transaction, FIGoal
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -59,10 +59,14 @@ def summary(db: Session = Depends(get_db)):
     passive = sum(_base_amount(t) for t in txs if t.type in PASSIVE_TYPES)
     needs_review = db.query(Transaction).filter(Transaction.needs_review == True).count()  # noqa: E712
 
+    goal = db.query(FIGoal).filter(FIGoal.user_id == 1).first()
+    fi_target = float(goal.target_net_worth) if goal and goal.target_net_worth else 0.0
+
     return {
         "net_worth": round(net_worth, 2),
         "passive_income_monthly": round(passive / 12, 2),
         "monthly_expenses": round(expenses / 12, 2),
         "savings_rate": round((income - expenses) / income, 4) if income > 0 else 0.0,
         "needs_review": needs_review,
+        "fi_target": round(fi_target, 2),
     }
