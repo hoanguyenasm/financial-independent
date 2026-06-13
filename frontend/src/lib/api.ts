@@ -66,6 +66,7 @@ export interface AnalyticsSummary {
   savings_rate: number          // fraction 0–1
   needs_review: number
   fi_target: number
+  base_monthly_savings: number
 }
 
 export interface CashflowMonth {
@@ -117,8 +118,11 @@ export interface TransactionRead {
   needs_review: boolean
 }
 
-export const getTransactions = (limit = 500) =>
-  api<TransactionRead[]>(`/transactions?limit=${limit}`)
+export const getTransactions = (limit = 500, category?: string) => {
+  const q = new URLSearchParams({ limit: String(limit) })
+  if (category) q.set('category', category)
+  return api<TransactionRead[]>(`/transactions?${q}`)
+}
 
 export interface FIGoalRead {
   id: number
@@ -176,3 +180,15 @@ export interface CategoryExpense {
 
 export const getCategoryExpenses = (months = 12) =>
   api<CategoryExpense[]>(`/analytics/expense-by-category?months=${months}`)
+
+export interface NWSnapshotRead {
+  id: number
+  date: string   // "YYYY-MM-DD"
+  net_worth: number
+}
+
+export const captureNWSnapshot = () =>
+  api<NWSnapshotRead>('/nw-snapshots', { method: 'POST' })
+
+export const getNWSnapshots = (limit = 24) =>
+  api<NWSnapshotRead[]>(`/nw-snapshots?limit=${limit}`)

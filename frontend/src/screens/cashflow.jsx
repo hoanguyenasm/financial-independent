@@ -7,7 +7,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Dropdown, DDItem, Donut, CashBars } from '../ui.jsx';
-import { getCashflowMonthly, getCategoryExpenses } from '../lib/api.ts';
+import { getCashflowMonthly, getCategoryExpenses, getTransactions } from '../lib/api.ts';
 
 export function CashFlowScreen({ go, currency, household }) {
   const M = (v, dec) => FMT.display(currency, v, dec);
@@ -20,6 +20,8 @@ export function CashFlowScreen({ go, currency, household }) {
 
   const [cf, setCf] = useState(DATA.CASHFLOW);
   const [liveCatExp, setLiveCatExp] = useState(null);
+  const [drillTxs, setDrillTxs] = useState([]);
+  const [drillLoading, setDrillLoading] = useState(false);
 
   useEffect(() => {
     getCashflowMonthly(12)
@@ -34,6 +36,14 @@ export function CashFlowScreen({ go, currency, household }) {
       .catch(() => {});
     getCategoryExpenses(12).then(setLiveCatExp).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!drill) { setDrillTxs([]); return; }
+    setDrillLoading(true);
+    getTransactions(12, drill)
+      .then(data => { setDrillTxs(data); setDrillLoading(false); })
+      .catch(() => { setDrillTxs([]); setDrillLoading(false); });
+  }, [drill]);
 
   const scale = view === 'yearly' ? 12 : 1;
   const periodInc = (view === 'monthly' ? cf[cf.length - 1].income : cf.reduce((s, m) => s + m.income, 0));
@@ -244,7 +254,7 @@ export function CashFlowScreen({ go, currency, household }) {
         <MultiLine series={DATA.CAT_TREND} months={cf.map(m => m.label)} h={210} M={M} />
       </section>
 
-      {drill && <DrillModal catId={drill} currency={currency} household={household} onClose={() => setDrill(null)} go={go} />}
+      {drill && <DrillModal catId={drill} currency={currency} household={household} onClose={() => setDrill(null)} go={go} rows={drillTxs} loading={drillLoading} />}
     </div>
   );
 }
@@ -294,9 +304,8 @@ function MultiLine({ series, months, h = 200, M }) {
   );
 }
 
-function DrillModal({ catId, currency, household, onClose, go }) {
-  const rows = DATA.TX.filter(t => t.category === catId && (household === 'household' || t.user_id === household)).slice(0, 12);
-  const total = rows.reduce((s, t) => s + t.amount_base, 0);
+function DrillModal({ catId, currency, household, onClose, go, rows, loading }) {
+  const total = rows.reduce((s, t) => s + Math.abs(t.amount_base ?? t.amount), 0);
   return (
     <div className="scrim" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
@@ -304,13 +313,14 @@ function DrillModal({ catId, currency, household, onClose, go }) {
           <div className="row" style={{ gap: 10 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: FMT.catColor(catId) }} /><div style={{ fontSize: 17, fontWeight: 800 }}>{FMT.catName(catId)}</div></div>
           <button className="btn ghost icon" onClick={onClose}><Icon n="x" s={16} /></button>
         </div>
-        <div className="kpi-sub" style={{ marginBottom: 16 }}>{rows.length} transactions · {FMT.display(currency, Math.abs(total), 2)} total</div>
+        <div className="kpi-sub" style={{ marginBottom: 16 }}>{rows.length} transactions · {FMT.display(currency, total, 2)} total</div>
         <div style={{ maxHeight: 340, overflowY: 'auto', margin: '0 -6px' }}>
-          {rows.length === 0 && <div className="kpi-sub" style={{ textAlign: 'center', padding: 24 }}>No transactions this period.</div>}
-          {rows.map(t => (
+          {loading && <div className="kpi-sub" style={{ textAlign: 'center', padding: 24 }}>Loading…</div>}
+          {!loading && rows.length === 0 && <div className="kpi-sub" style={{ textAlign: 'center', padding: 24 }}>No transactions this period.</div>}
+          {!loading && rows.map(t => (
             <div key={t.id} className="spread" style={{ padding: '10px 6px', borderBottom: '1px solid var(--border)' }}>
-              <div><div style={{ fontSize: 13, fontWeight: 600 }}>{t.desc}</div><div className="fx">{FMT.fmtDay(t.d)} · {DATA.ACCT[t.account_id].name}</div></div>
-              <div style={{ textAlign: 'right' }}><div className="mono" style={{ fontWeight: 700, fontSize: 13.5 }}>{FMT.orig(t.currency, t.amount)}</div>{t.currency !== currency && <div className="fx">{FMT.display(currency, t.amount_base, 2)}</div>}</div>
+              <div><div style={{ fontSize: 13, fontWeight: 600 }}>{t.description}</div><div className="fx">{t.date} · {t.currency}</div></div>
+              <div style={{ textAlign: 'right' }}><div className="mono" style={{ fontWeight: 700, fontSize: 13.5 }}>{FMT.display(t.currency, Math.abs(t.amount), 2)}</div>{t.currency !== currency && t.amount_base != null && <div className="fx">{FMT.display(currency, Math.abs(t.amount_base), 2)}</div>}</div>
             </div>
           ))}
         </div>

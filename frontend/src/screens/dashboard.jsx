@@ -5,7 +5,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { DATA, FMT, FIRE } from '../data.js';
 import { Icon, Ring, Spark, AreaChart } from '../ui.jsx';
-import { getAnalyticsSummary } from '../lib/api.ts';
+import { getAnalyticsSummary, captureNWSnapshot, getNWSnapshots } from '../lib/api.ts';
 
 export function DashboardScreen({ go, currency, household }) {
   const S = DATA.SUMMARY;
@@ -18,6 +18,8 @@ export function DashboardScreen({ go, currency, household }) {
   const [savingsRatePct, setSavingsRatePct] = useState(S.savings_rate_month);
   const [netWorth, setNetWorth] = useState(S.net_worth);
   const [fiTarget, setFiTarget] = useState(S.fi_target);
+  const [baseMonthlySavings, setBaseMonthlySavings] = useState(S.base_monthly_savings);
+  const [liveNW, setLiveNW] = useState([]);
 
   useEffect(() => {
     getAnalyticsSummary()
@@ -28,13 +30,18 @@ export function DashboardScreen({ go, currency, household }) {
         setSavingsRatePct(Math.round(s.savings_rate * 100));
         if (s.net_worth > 0) setNetWorth(s.net_worth);
         if (s.fi_target > 0) setFiTarget(s.fi_target);
+        if (s.base_monthly_savings > 0) setBaseMonthlySavings(s.base_monthly_savings);
       })
       .catch(() => {});
+    captureNWSnapshot().catch(() => {});
+    getNWSnapshots(24).then(snaps => {
+      if (snaps.length >= 2) setLiveNW(snaps);
+    }).catch(() => {});
   }, []);
 
-  const baseN = useMemo(() => FIRE.monthsToFI(S.base_monthly_savings), []);
+  const baseN = useMemo(() => FIRE.monthsToFI(baseMonthlySavings), [baseMonthlySavings]);
   const [extra, setExtra] = useState(0);
-  const n = useMemo(() => FIRE.monthsToFI(S.base_monthly_savings + extra), [extra]);
+  const n = useMemo(() => FIRE.monthsToFI(baseMonthlySavings + extra), [baseMonthlySavings, extra]);
   const fiD = FIRE.fiDate(n);
   const aheadBase = Math.round((S.plan_date - FIRE.fiDate(baseN)) / (1000 * 60 * 60 * 24 * 30.44));
   const ahead = Math.round((S.plan_date - fiD) / (1000 * 60 * 60 * 24 * 30.44));
@@ -94,8 +101,9 @@ export function DashboardScreen({ go, currency, household }) {
 
           <div className="sep" style={{ margin: '24px 0' }} />
           <div className="kpi-label" style={{ marginBottom: 10 }}>Net-worth trajectory</div>
-          <AreaChart id="hero" values={DATA.NW_SERIES.map(p => p.value)} h={96}
-            color="var(--accent)" target={fiTarget} targetLabel={MC(fiTarget) + ' · FI'} gridY={2} max={fiTarget * 1.04} />
+          <AreaChart id="hero"
+            values={liveNW.length >= 2 ? liveNW.map(s => s.net_worth) : DATA.NW_SERIES.map(p => p.value)}
+            h={96} color="var(--accent)" target={fiTarget} targetLabel={MC(fiTarget) + ' · FI'} gridY={2} max={fiTarget * 1.04} />
         </div>
       </section>
 

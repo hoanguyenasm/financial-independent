@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Donut, AreaChart } from '../ui.jsx';
-import { getAccounts, createAccount, getAssets } from '../lib/api.ts';
+import { getAccounts, createAccount, getAssets, getNWSnapshots } from '../lib/api.ts';
 
 function typeToClass(type) {
   if (type === 'crypto') return 'crypto';
@@ -24,6 +24,7 @@ export function AccountsScreen({ go, currency, household }) {
   const [liveAccounts, setLiveAccounts] = useState(DATA.ACCOUNTS);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [liveAssets, setLiveAssets] = useState(DATA.ASSETS);
+  const [liveNW, setLiveNW] = useState([]);
 
   useEffect(() => {
     getAccounts().then(data => {
@@ -43,9 +44,17 @@ export function AccountsScreen({ go, currency, household }) {
     getAssets().then(data => {
       if (data.length > 0) setLiveAssets(data);
     }).catch(() => {});
+    getNWSnapshots(24).then(snaps => {
+      if (snaps.length >= 2) setLiveNW(snaps);
+    }).catch(() => {});
   }, []);
 
-  const nw = DATA.NW_SERIES;
+  const nw = liveNW.length >= 2
+    ? liveNW.map(s => {
+        const d = new Date(s.date);
+        return { label: DATA.MONTHS[d.getMonth()], year: d.getFullYear(), value: s.net_worth };
+      })
+    : DATA.NW_SERIES;
   const series = range === '12' ? nw.slice(-12) : nw;
   const startV = series[0].value, endV = series[series.length - 1].value;
   const change = endV - startV, changePct = change / startV;
@@ -82,6 +91,33 @@ export function AccountsScreen({ go, currency, household }) {
     { key: 'gold', label: 'Gold', items: assets.filter(a => a.type === 'gold') },
     { key: 'realestate', label: 'Real estate', items: assets.filter(a => a.type === 'realestate') },
   ];
+
+  const ALLOC_META = {
+    stocks:     { label: 'Stocks & ETFs',  color: 'var(--c-stocks)' },
+    realestate: { label: 'Real estate',    color: 'var(--c-realestate)' },
+    crypto:     { label: 'Crypto',         color: 'var(--c-crypto)' },
+    gold:       { label: 'Gold',           color: 'var(--c-gold)' },
+    cash:       { label: 'Cash & savings', color: 'var(--c-cash)' },
+  };
+  const liveAllocation = React.useMemo(() => {
+    if (liveAssets === DATA.ASSETS) return liveAllocation;
+    const totals = {};
+    for (const a of liveAssets) {
+      const rawType = 'symbol_or_name' in a ? a.asset_type : a.type;
+      const key = ['etf', 'stock', 'bond'].includes(rawType) ? 'stocks'
+        : rawType === 'real_estate' ? 'realestate'
+        : rawType === 'crypto' ? 'crypto'
+        : rawType === 'gold' ? 'gold'
+        : 'cash';
+      const val = (('current_value' in a ? a.current_value : a.qty * a.price) ?? 0)
+        * (('ownership_pct' in a ? a.ownership_pct : a.ownership) ?? 100) / 100;
+      totals[key] = (totals[key] ?? 0) + val;
+    }
+    return Object.entries(totals)
+      .filter(([, v]) => v > 0)
+      .map(([key, value]) => ({ key, value, ...(ALLOC_META[key] ?? { label: key, color: '#888' }) }))
+      .sort((a, b) => b.value - a.value);
+  }, [liveAssets]);
 
   return (
     <div className="page rise">
@@ -120,11 +156,11 @@ export function AccountsScreen({ go, currency, household }) {
         <section className="card">
           <div className="card-h"><div className="t"><b>Asset allocation</b></div></div>
           <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 16px' }}>
-            <Donut segments={DATA.ALLOCATION.map(a => ({ value: a.value, color: a.color, label: a.label }))} size={176} stroke={25}
+            <Donut segments={liveAllocation.map(a => ({ value: a.value, color: a.color, label: a.label }))} size={176} stroke={25}
               center={<><div className="num" style={{ fontSize: 22, fontWeight: 800 }}>{MC(endV)}</div><div className="kpi-sub">net worth</div></>} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {DATA.ALLOCATION.map(a => (
+            {liveAllocation.map(a => (
               <div key={a.key} className="legend-row" style={{ justifyContent: 'space-between' }}>
                 <span className="legend-row"><i style={{ background: a.color }} />{a.label}</span>
                 <span className="row" style={{ gap: 10 }}><span className="mono" style={{ color: 'var(--text-3)', fontSize: 12 }}>{Math.round(a.value / endV * 100)}%</span><span className="mono" style={{ fontWeight: 700 }}>{MC(a.value)}</span></span>
