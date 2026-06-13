@@ -47,6 +47,7 @@ function ImportTab() {
   const [selectedAccountId, setSelectedAccountId] = useState(
     defaultAccounts.length > 0 ? defaultAccounts[0].id : null
   );
+  const [selectedUserId, setSelectedUserId] = useState(1);
 
   useEffect(() => {
     getAccounts(true).then(data => {
@@ -73,7 +74,8 @@ function ImportTab() {
     if (!file) return;
     setPhase('uploading');
     try {
-      const log = await importFile(file, selectedAccountId ?? 1, 1);
+      const log = await importFile(file, selectedAccountId ?? 1, selectedUserId);
+      localStorage.setItem('fire.my_user_id', String(selectedUserId));
       setResult(log);
       setPhase('result');
       showToast(`Imported ${log.rows_imported} transactions · ${log.rows_uncategorized} need review`, 'check');
@@ -162,6 +164,21 @@ function ImportTab() {
             {accounts.length === 0 && (
               <div className="fx" style={{ padding: '8px 4px' }}>No accounts found. Create one first.</div>
             )}
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <label className="fld">Imported by</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[{ id: 1, label: 'You' }, { id: 2, label: 'Partner' }].map(u => (
+                <button
+                  key={u.id}
+                  className={'btn ' + (selectedUserId === u.id ? 'primary' : 'ghost') + ' sm'}
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => setSelectedUserId(u.id)}
+                >
+                  {u.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
