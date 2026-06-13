@@ -78,6 +78,8 @@ def test_summary(client):
     assert s["passive_income_monthly"] == round(240 / 12, 2)
     assert s["savings_rate"] == round((6240 - 2410) / 6240, 4)
     assert s["needs_review"] == 1
+    # income=6240, expenses=2410, so (6240-2410)/12 = 319.17
+    assert s["base_monthly_savings"] == round((6240 - 2410) / 12, 2)
 
 
 def test_summary_empty_db(client):
@@ -85,7 +87,7 @@ def test_summary_empty_db(client):
     assert s == {
         "net_worth": 0.0, "passive_income_monthly": 0.0,
         "monthly_expenses": 0.0, "savings_rate": 0.0, "needs_review": 0,
-        "fi_target": 0.0,
+        "fi_target": 0.0, "base_monthly_savings": 0.0,
     }
 
 

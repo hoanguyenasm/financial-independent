@@ -88,4 +88,5 @@ def summary(db: Session = Depends(get_db)):
         "savings_rate": round((income - expenses) / income, 4) if income > 0 else 0.0,
         "needs_review": needs_review,
         "fi_target": round(fi_target, 2),
+        "base_monthly_savings": round((income - expenses) / 12, 2) if income > 0 else 0.0,
     }
