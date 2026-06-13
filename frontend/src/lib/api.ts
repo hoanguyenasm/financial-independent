@@ -79,3 +79,32 @@ export const getAnalyticsSummary = () =>
 
 export const getCashflowMonthly = (months = 12) =>
   api<CashflowMonth[]>(`/analytics/cashflow-monthly?months=${months}`)
+
+export interface AccountRead {
+  id: number
+  name: string
+  type: string
+  currency: string
+  institution: string | null
+  is_active: boolean
+}
+
+export const getAccounts = (activeOnly = false) =>
+  api<AccountRead[]>(`/accounts${activeOnly ? '?active_only=true' : ''}`)
+
+export interface TransactionRead {
+  id: number
+  account_id: number
+  user_id: number
+  date: string          // "YYYY-MM-DD"
+  amount: number
+  currency: string
+  amount_base: number | null
+  description: string
+  category: string
+  type: string
+  needs_review: boolean
+}
+
+export const getTransactions = (limit = 500) =>
+  api<TransactionRead[]>(`/transactions?limit=${limit}`)
