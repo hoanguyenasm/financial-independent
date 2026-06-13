@@ -33,15 +33,20 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
             buckets[key]["income"] += amount
         elif tx.type in EXPENSE_TYPES:
             buckets[key]["expense"] += abs(amount)
-    return [
-        {
-            "month": month,
+    today = date.today()
+    result = []
+    for i in range(months - 1, -1, -1):
+        total = today.year * 12 + (today.month - 1) - i
+        m = date(total // 12, total % 12 + 1, 1)
+        key = m.strftime("%Y-%m")
+        vals = buckets.get(key, {"income": 0.0, "expense": 0.0})
+        result.append({
+            "month": key,
             "income": round(vals["income"], 2),
             "expense": round(vals["expense"], 2),
             "net": round(vals["income"] - vals["expense"], 2),
-        }
-        for month, vals in sorted(buckets.items())
-    ]
+        })
+    return result
 
 
 @router.get("/expense-by-category")

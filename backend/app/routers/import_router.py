@@ -1,4 +1,5 @@
 import io
+import os
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -44,6 +45,36 @@ async def import_file(
         user_id=user_id,
         filename=file.filename or "unknown",
         source_type=ext,
+    )
+    return log
+
+
+@router.post("/from-path", response_model=ImportLogRead, status_code=201)
+async def import_from_path(
+    path: str = Form(...),
+    account_id: int = Form(...),
+    user_id: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    path = path.strip()
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=422, detail=f"File not found: {path}")
+    ext = _extension(path)
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=422, detail=f"Unsupported file type: .{ext}")
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+        if ext == "csv":
+            rows = parse_csv(io.StringIO(raw.decode("utf-8-sig")))
+        else:
+            rows = parse_pdf(io.BytesIO(raw))
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Failed to parse: {exc}") from exc
+    log = ImportService.run(
+        db=db, rows=rows,
+        account_id=account_id, user_id=user_id,
+        filename=os.path.basename(path), source_type=ext,
     )
     return log
 

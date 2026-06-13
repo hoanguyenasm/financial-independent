@@ -54,6 +54,23 @@ export async function importFile(
   return res.json()
 }
 
+export async function importFromPath(
+  path: string,
+  accountId: number,
+  userId: number,
+): Promise<ImportLogRead> {
+  const fd = new FormData()
+  fd.append('path', path)
+  fd.append('account_id', String(accountId))
+  fd.append('user_id', String(userId))
+  const res = await fetch(`${BASE}/import/from-path`, { method: 'POST', body: fd })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `${res.status} ${res.statusText}`)
+  }
+  return res.json()
+}
+
 export const getImportLogs = (accountId?: number) => {
   const q = accountId != null ? `?account_id=${accountId}` : ''
   return api<ImportLogRead[]>(`/import/logs${q}`)

@@ -49,7 +49,9 @@ def test_cashflow_monthly_passive_income_types_count_as_income(client):
 def test_cashflow_monthly_empty(client):
     response = client.get("/analytics/cashflow-monthly")
     assert response.status_code == 200
-    assert response.json() == []
+    data = response.json()
+    assert len(data) == 12
+    assert all(r["income"] == 0.0 and r["expense"] == 0.0 and r["net"] == 0.0 for r in data)
 
 
 def test_summary(client):

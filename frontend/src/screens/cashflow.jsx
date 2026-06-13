@@ -26,12 +26,10 @@ export function CashFlowScreen({ go, currency, household }) {
   useEffect(() => {
     getCashflowMonthly(12)
       .then(data => {
-        if (data.length > 0) {
-          setCf(data.map(m => {
-            const [y, mo] = m.month.split('-').map(Number);
-            return { label: DATA.MONTHS[mo - 1], year: y, income: m.income, expense: m.expense, net: m.net };
-          }));
-        }
+        setCf(data.map(m => {
+          const [y, mo] = m.month.split('-').map(Number);
+          return { label: DATA.MONTHS[mo - 1], year: y, income: m.income, expense: m.expense, net: m.net };
+        }));
       })
       .catch(() => {});
     getCategoryExpenses(12).then(setLiveCatExp).catch(() => {});
@@ -76,7 +74,7 @@ export function CashFlowScreen({ go, currency, household }) {
   const expTotal = useMemo(() => groups.reduce((s, g) => s + g.total, 0), [groups]);
   const periodExp = expTotal * scale;
   const netSaved = periodInc - periodExp;
-  const savingsRate = Math.round(netSaved / periodInc * 100);
+  const savingsRate = periodInc > 0 ? Math.round(netSaved / periodInc * 100) : 0;
   const maxGroup = Math.max(...groups.map(g => g.total));
 
   const toggle = (id) => setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });

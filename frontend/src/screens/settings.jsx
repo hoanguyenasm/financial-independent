@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, deleteCategoryRule, importFile, getImportLogs, getAccounts, getFIGoal, upsertFIGoal } from '../lib/api.ts';
+import { getSettings, updateSettings, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal } from '../lib/api.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'import');
@@ -41,6 +41,7 @@ function ImportTab() {
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState(DATA.IMPORTS);
   const [, showToast] = useToast();
+  const [pathInput, setPathInput] = useState('');
 
   const defaultAccounts = DATA.ACCOUNTS.filter(a => a.is_active);
   const [accounts, setAccounts] = useState(defaultAccounts);
@@ -86,29 +87,61 @@ function ImportTab() {
     }
   };
 
+  const handlePathImport = async () => {
+    if (!pathInput.trim()) return;
+    setPhase('uploading');
+    try {
+      const log = await importFromPath(pathInput.trim(), selectedAccountId ?? 1, selectedUserId);
+      localStorage.setItem('fire.my_user_id', String(selectedUserId));
+      setResult(log);
+      setPhase('result');
+      showToast(`Imported ${log.rows_imported} transactions · ${log.rows_uncategorized} need review`, 'check');
+      loadHistory();
+    } catch (err) {
+      showToast(`Import failed: ${err.message}`, 'x');
+      setPhase('idle');
+    }
+  };
+
   const reset = () => { setPhase('idle'); setResult(null); };
 
   return (
     <>
       <div className="grid" style={{ gridTemplateColumns: '1fr 280px', marginBottom: 22, alignItems: 'start' }}>
         {phase === 'idle' && (
-          <div className={'dropzone' + (over ? ' over' : '')}
-            onDragOver={e => { e.preventDefault(); setOver(true); }}
-            onDragLeave={() => setOver(false)}
-            onDrop={e => { e.preventDefault(); setOver(false); handleFile(e.dataTransfer.files?.[0]); }}>
-            <span style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-              <Icon n="upload" s={26} c="var(--accent)" />
-            </span>
-            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Drop a PDF or CSV statement here</div>
-            <div className="kpi-sub" style={{ marginBottom: 4 }}>or click to browse · Comdirect, ING, Trade Republic, Scalable, Revolut supported</div>
-            <div className="fx">We never store your bank credentials</div>
-            <input type="file" accept=".csv,.pdf" style={{ display: 'none' }}
-              id="import-file-input"
-              onChange={e => handleFile(e.target.files?.[0])} />
-            <button className="btn ghost" style={{ marginTop: 14 }}
-              onClick={e => { e.stopPropagation(); document.getElementById('import-file-input').click(); }}>
-              Browse files
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className={'dropzone' + (over ? ' over' : '')}
+              onDragOver={e => { e.preventDefault(); setOver(true); }}
+              onDragLeave={() => setOver(false)}
+              onDrop={e => { e.preventDefault(); setOver(false); handleFile(e.dataTransfer.files?.[0]); }}>
+              <span style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <Icon n="upload" s={26} c="var(--accent)" />
+              </span>
+              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Drop a PDF or CSV statement here</div>
+              <div className="kpi-sub" style={{ marginBottom: 4 }}>or click to browse · Comdirect, ING, Trade Republic, Scalable, Revolut supported</div>
+              <div className="fx">We never store your bank credentials</div>
+              <input type="file" accept=".csv,.pdf" style={{ display: 'none' }}
+                id="import-file-input"
+                onChange={e => handleFile(e.target.files?.[0])} />
+              <button className="btn ghost" style={{ marginTop: 14 }}
+                onClick={e => { e.stopPropagation(); document.getElementById('import-file-input').click(); }}>
+                Browse files
+              </button>
+            </div>
+            <div className="card tight">
+              <label className="fld" style={{ marginBottom: 8 }}>Import from file path</label>
+              <div className="row" style={{ gap: 8 }}>
+                <input className="inp mono" style={{ flex: 1, fontSize: 12 }}
+                  placeholder="G:\My Drive\budget\statement.pdf"
+                  value={pathInput}
+                  onChange={e => setPathInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handlePathImport()} />
+                <button className="btn primary sm" onClick={handlePathImport} disabled={!pathInput.trim()}>
+                  Import
+                </button>
+              </div>
+              <div className="fx" style={{ marginTop: 6 }}>Full path to a local PDF or CSV — the backend reads it directly</div>
+            </div>
           </div>
         )}
 
