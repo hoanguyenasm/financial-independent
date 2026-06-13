@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, deleteCategoryRule } from '../lib/api.ts';
+import { getSettings, updateSettings, deleteCategoryRule, importFile, getImportLogs } from '../lib/api.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'import');
@@ -28,74 +28,88 @@ export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
 
 /* ---------------- IMPORT ---------------- */
 function ImportTab() {
-  const [acct, setAcct] = useState('comdirect');
-  const [phase, setPhase] = useState('idle');     // idle | preview
+  const [phase, setPhase] = useState('idle');     // idle | uploading | result
   const [over, setOver] = useState(false);
-  const [file, setFile] = useState(null);
+  const [result, setResult] = useState(null);
   const [history, setHistory] = useState(DATA.IMPORTS);
-  const [toast, showToast] = useToast();
+  const [, showToast] = useToast();
 
-  const previewRows = [
-    { date: '10 Jun', desc: 'REWE SAGT DANKE', amt: -42.80, cur: 'EUR', cat: 'supermarket', dupe: false },
-    { date: '9 Jun', desc: 'DEUTSCHE BAHN ICE', amt: -59.00, cur: 'EUR', cat: 'travel', dupe: false },
-    { date: '9 Jun', desc: 'PAYPAL *DIGISTORE24', amt: -29.90, cur: 'EUR', cat: null, dupe: false },
-    { date: '8 Jun', desc: 'AIRBNB PAYMENTS', amt: 1180.00, cur: 'EUR', cat: 'airbnb', dupe: false },
-    { date: '8 Jun', desc: 'NETFLIX.COM', amt: -17.99, cur: 'EUR', cat: 'abo', dupe: true },
-    { date: '7 Jun', desc: 'SEPA-LASTSCHRIFT VISA 4471', amt: -84.50, cur: 'EUR', cat: null, dupe: false },
-  ];
-  const startUpload = (name) => { setFile(name || 'comdirect_2026_06.pdf'); setPhase('preview'); };
-  const confirm = () => {
-    setHistory(h => [{ id: Date.now(), file, acct, date: '12 Jun 2026', rows: 44, status: 'success', dupes: 3 }, ...h]);
-    showToast('Imported 44 transactions · 12 need review', 'check');
-    setPhase('idle'); setFile(null);
+  const loadHistory = () =>
+    getImportLogs().then(setHistory).catch(() => {});
+
+  useEffect(() => { loadHistory(); }, []);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setPhase('uploading');
+    try {
+      const log = await importFile(file, 1, 1);
+      setResult(log);
+      setPhase('result');
+      showToast(`Imported ${log.rows_imported} transactions · ${log.rows_uncategorized} need review`, 'check');
+      loadHistory();
+    } catch (err) {
+      showToast(`Import failed: ${err.message}`, 'x');
+      setPhase('idle');
+    }
   };
+
+  const reset = () => { setPhase('idle'); setResult(null); };
 
   return (
     <>
       <div className="grid" style={{ gridTemplateColumns: '1fr 280px', marginBottom: 22, alignItems: 'start' }}>
-        {phase === 'idle' ? (
+        {phase === 'idle' && (
           <div className={'dropzone' + (over ? ' over' : '')}
-            onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
-            onDrop={e => { e.preventDefault(); setOver(false); startUpload(e.dataTransfer.files[0]?.name); }}
-            onClick={() => startUpload()}>
-            <span style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}><Icon n="upload" s={26} c="var(--accent)" /></span>
+            onDragOver={e => { e.preventDefault(); setOver(true); }}
+            onDragLeave={() => setOver(false)}
+            onDrop={e => { e.preventDefault(); setOver(false); handleFile(e.dataTransfer.files[0]); }}>
+            <span style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <Icon n="upload" s={26} c="var(--accent)" />
+            </span>
             <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Drop a PDF or CSV statement here</div>
             <div className="kpi-sub" style={{ marginBottom: 4 }}>or click to browse · Comdirect, ING, Trade Republic, Scalable, Revolut supported</div>
             <div className="fx">We never store your bank credentials</div>
+            <input type="file" accept=".csv,.pdf" style={{ display: 'none' }}
+              id="import-file-input"
+              onChange={e => handleFile(e.target.files?.[0])} />
+            <button className="btn ghost" style={{ marginTop: 14 }}
+              onClick={e => { e.stopPropagation(); document.getElementById('import-file-input').click(); }}>
+              Browse files
+            </button>
           </div>
-        ) : (
+        )}
+
+        {phase === 'uploading' && (
+          <div className="card fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 180 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Uploading & parsing…</div>
+              <div className="fx">Applying category rules and checking for duplicates</div>
+            </div>
+          </div>
+        )}
+
+        {phase === 'result' && result && (
           <div className="card fade-in">
             <div className="spread" style={{ marginBottom: 16 }}>
               <div className="row" style={{ gap: 11 }}>
-                <span style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon n="doc" s={19} c="var(--accent)" /></span>
-                <div><div style={{ fontWeight: 800, fontSize: 14 }}>{file}</div><div className="fx">→ {DATA.ACCT[acct].name}</div></div>
+                <span style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon n="doc" s={19} c="var(--accent)" />
+                </span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14 }}>{result.filename}</div>
+                  <div className="fx">{result.source_type.toUpperCase()} · {new Date(result.imported_at).toLocaleString()}</div>
+                </div>
               </div>
-              <button className="btn ghost icon" onClick={() => setPhase('idle')}><Icon n="x" s={16} /></button>
+              <button className="btn ghost icon" onClick={reset}><Icon n="x" s={16} /></button>
             </div>
             <div className="gridcols-3" style={{ marginBottom: 18 }}>
-              <PreviewStat n="44" label="transactions found" color="var(--accent)" />
-              <PreviewStat n="3" label="duplicates skipped" color="var(--text-2)" />
-              <PreviewStat n="12" label="uncategorized" color="var(--warn)" />
+              <PreviewStat n={result.rows_imported} label="imported" color="var(--pos)" />
+              <PreviewStat n={result.rows_skipped} label="duplicates skipped" color="var(--text-2)" />
+              <PreviewStat n={result.rows_uncategorized} label="need review" color="var(--warn)" />
             </div>
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead><tr><th>Date</th><th>Description</th><th>Category</th><th className="r">Amount</th><th className="c">Status</th></tr></thead>
-                <tbody>
-                  {previewRows.map((r, i) => (
-                    <tr key={i} style={r.dupe ? { opacity: .45 } : {}}>
-                      <td className="mono" style={{ fontSize: 12, color: 'var(--text-2)' }}>{r.date}</td>
-                      <td style={{ fontWeight: 600 }}>{r.desc}</td>
-                      <td>{r.cat ? <span className="catcell" style={{ color: FMT.catColor(r.cat) }}><span className="dot-c" style={{ background: FMT.catColor(r.cat) }} />{FMT.catName(r.cat)}</span> : <span className="catcell empty"><Icon n="alert" s={12} />Uncategorized</span>}</td>
-                      <td className="r mono" style={{ fontWeight: 700, color: r.amt >= 0 ? 'var(--pos)' : 'var(--text)' }}>{FMT.orig(r.cur, r.amt)}</td>
-                      <td className="c">{r.dupe ? <span className="tag ghost sm">duplicate</span> : <span className="tag pos sm">new</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="row" style={{ gap: 10, marginTop: 18, justifyContent: 'flex-end' }}>
-              <button className="btn ghost" onClick={() => setPhase('idle')}>Cancel</button>
-              <button className="btn primary" onClick={confirm}><Icon n="check" s={15} c="#04121d" />Confirm import · 44 rows</button>
+            <div className="row" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn primary" onClick={reset}><Icon n="upload" s={15} c="#04121d" />Import another</button>
             </div>
           </div>
         )}
@@ -104,9 +118,10 @@ function ImportTab() {
           <label className="fld">Target account</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {DATA.ACCOUNTS.filter(a => a.is_active).map(a => (
-              <button key={a.id} className="dd-item" onClick={() => setAcct(a.id)}
-                style={{ border: '1px solid ' + (acct === a.id ? 'var(--accent)' : 'var(--border)'), background: acct === a.id ? 'var(--accent-soft)' : 'var(--surface-2)' }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: `var(--c-${a.cls})` }} /><span style={{ flex: 1 }}>{a.name}</span>{acct === a.id && <Icon n="check" s={14} c="var(--accent)" />}
+              <button key={a.id} className="dd-item"
+                style={{ border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: `var(--c-${a.cls})` }} />
+                <span style={{ flex: 1 }}>{a.name}</span>
               </button>
             ))}
           </div>
@@ -122,22 +137,22 @@ function ImportTab() {
             <tbody>
               {history.map(h => (
                 <tr key={h.id}>
-                  <td><div className="row" style={{ gap: 9 }}><Icon n="doc" s={15} c="var(--text-3)" /><span style={{ fontWeight: 600 }}>{h.file}</span></div></td>
-                  <td className="t2" style={{ fontSize: 12.5 }}>{DATA.ACCT[h.acct] ? DATA.ACCT[h.acct].name : '—'}</td>
-                  <td className="mono" style={{ fontSize: 12, color: 'var(--text-2)' }}>{h.date}</td>
-                  <td className="r mono" style={{ fontWeight: 700 }}>{h.rows || '—'}</td>
+                  <td><div className="row" style={{ gap: 9 }}><Icon n="doc" s={15} c="var(--text-3)" /><span style={{ fontWeight: 600 }}>{h.file || h.filename}</span></div></td>
+                  <td className="t2" style={{ fontSize: 12.5 }}>{h.acct ? (DATA.ACCT[h.acct] ? DATA.ACCT[h.acct].name : h.acct) : `Account ${h.account_id}`}</td>
+                  <td className="mono" style={{ fontSize: 12, color: 'var(--text-2)' }}>{h.date || (h.imported_at ? new Date(h.imported_at).toLocaleDateString() : '—')}</td>
+                  <td className="r mono" style={{ fontWeight: 700 }}>{h.rows || h.rows_imported || '—'}</td>
                   <td className="c">
-                    <span className={'tag sm ' + (h.status === 'success' ? 'pos' : h.status === 'partial' ? 'warn' : 'neg')} title={h.note || ''}>
-                      {h.status === 'success' ? 'success' : h.status === 'partial' ? 'partial' : 'failed'}{h.dupes ? ` · ${h.dupes} dupes` : ''}
-                    </span>
+                    <span className={'tag sm ' + (h.status === 'success' || h.status === 'done' ? 'pos' : h.status === 'partial' ? 'warn' : 'neg')}>{h.status || 'done'}</span>
                   </td>
                 </tr>
               ))}
+              {history.length === 0 && (
+                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '24px 0' }}>No imports yet</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </section>
-      {toast}
     </>
   );
 }

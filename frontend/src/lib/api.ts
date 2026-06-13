@@ -27,3 +27,34 @@ export const createCategoryRule = (pattern: string, category: string) =>
 
 export const deleteCategoryRule = (id: number) =>
   api(`/category-rules/${id}`, { method: 'DELETE' })
+
+export interface ImportLogRead {
+  id: number
+  account_id: number
+  filename: string
+  source_type: string
+  status: string
+  rows_imported: number
+  rows_skipped: number
+  rows_uncategorized: number
+  imported_at: string
+}
+
+export async function importFile(
+  file: File,
+  accountId: number,
+  userId: number,
+): Promise<ImportLogRead> {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('account_id', String(accountId))
+  fd.append('user_id', String(userId))
+  const res = await fetch(`${BASE}/import`, { method: 'POST', body: fd })
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  return res.json()
+}
+
+export const getImportLogs = (accountId?: number) => {
+  const q = accountId != null ? `?account_id=${accountId}` : ''
+  return api<ImportLogRead[]>(`/import/logs${q}`)
+}
