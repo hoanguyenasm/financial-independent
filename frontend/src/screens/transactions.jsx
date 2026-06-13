@@ -5,10 +5,23 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Avatar, Check, Dropdown, DDItem, useToast } from '../ui.jsx';
-import { patchTransaction, createCategoryRule } from '../lib/api.ts';
+import { patchTransaction, createCategoryRule, getAccounts, getTransactions } from '../lib/api.ts';
+
+function typeToClass(type) {
+  if (type === 'crypto') return 'crypto';
+  if (type === 'realestate' || type === 'real_estate') return 'realestate';
+  if (type === 'gold') return 'gold';
+  if (type === 'brokerage' || type === 'investment' || type === 'stocks') return 'stocks';
+  return 'bank';
+}
 
 export function TransactionsScreen({ go, currency, household, initialFilter, registerSetReview }) {
   const [tx, setTx] = useState(() => DATA.TX.map(t => ({ ...t })));
+  const [accounts, setAccounts] = useState(DATA.ACCOUNTS);
+  const acctMap = useMemo(
+    () => Object.fromEntries(accounts.map(a => [a.id, a])),
+    [accounts]
+  );
   const [q, setQ] = useState('');
   const [fAcct, setFAcct] = useState('all');
   const [fCat, setFCat] = useState('all');
@@ -25,6 +38,36 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
   useEffect(() => { if (initialFilter && initialFilter.needsReview) setNeedsReview(true); }, [initialFilter]);
   const reviewCount = tx.filter(t => t.needs_review).length;
   useEffect(() => { registerSetReview && registerSetReview(reviewCount); }, [reviewCount]);
+
+  useEffect(() => {
+    getAccounts().then(data => {
+      if (data.length > 0) {
+        setAccounts(data.map(a => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          orig_cur: a.currency,
+          cls: typeToClass(a.type),
+          base: 0,
+          orig_bal: 0,
+          is_active: a.is_active,
+        })));
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    getTransactions(500).then(data => {
+      if (data.length > 0) {
+        setTx(data.map(t => ({
+          ...t,
+          d: new Date(t.date),
+          desc: t.description,
+          amount_base: t.amount_base ?? t.amount,
+        })));
+      }
+    }).catch(() => {});
+  }, []);
 
   const filtered = useMemo(() => {
     const cut = new Date(DATA.TODAY); cut.setDate(cut.getDate() - +fRange);
@@ -88,10 +131,10 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
           style={needsReview ? { background: 'var(--warn-soft)', borderColor: 'rgba(251,191,36,.4)', color: 'var(--warn)' } : {}}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: needsReview ? 'var(--warn)' : 'var(--text-3)' }} />Needs review
         </button>
-        <Dropdown label="Account" display={fAcct === 'all' ? 'All' : DATA.ACCT[fAcct].name}>
+        <Dropdown label="Account" display={fAcct === 'all' ? 'All' : (acctMap[fAcct]?.name ?? 'Account')}>
           <DDItem on={fAcct === 'all'} onClick={() => setFAcct('all')}>All accounts</DDItem>
           <div className="dd-sep" />
-          {DATA.ACCOUNTS.filter(a => a.is_active).map(a => <DDItem key={a.id} on={fAcct === a.id} onClick={() => setFAcct(a.id)}>{a.name}</DDItem>)}
+          {accounts.filter(a => a.is_active).map(a => <DDItem key={a.id} on={fAcct === a.id} onClick={() => setFAcct(a.id)}>{a.name}</DDItem>)}
         </Dropdown>
         <Dropdown label="Category" display={fCat === 'all' ? 'All' : FMT.catName(fCat)}>
           <DDItem on={fCat === 'all'} onClick={() => setFCat('all')}>All categories</DDItem>
@@ -155,7 +198,7 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
                 </td>
                 <td className="r mono" style={{ fontWeight: 700, color: t.amount >= 0 ? 'var(--pos)' : 'var(--text)' }}>{FMT.orig(t.currency, t.amount)}</td>
                 <td className="r mono" style={{ color: t.amount_base >= 0 ? 'var(--pos)' : 'var(--text-2)', fontSize: 12 }}>{FMT.display(currency, t.amount_base, currency === 'VND' ? 0 : 2)}</td>
-                <td><span className="row" style={{ gap: 8, fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}><span style={{ width: 7, height: 7, borderRadius: 2, background: `var(--c-${DATA.ACCT[t.account_id].cls})` }} />{DATA.ACCT[t.account_id].name}</span></td>
+                <td><span className="row" style={{ gap: 8, fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}><span style={{ width: 7, height: 7, borderRadius: 2, background: `var(--c-${acctMap[t.account_id]?.cls ?? 'other'})` }} />{acctMap[t.account_id]?.name ?? 'Unknown'}</span></td>
                 <td className="c"><Avatar user={t.user_id} size={22} /></td>
               </tr>
             ))}
