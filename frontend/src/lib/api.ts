@@ -149,3 +149,30 @@ export const upsertFIGoal = async (userId: number, body: FIGoalUpsert): Promise<
     return api<FIGoalRead>('/fi-goals', { method: 'POST', body: JSON.stringify({ user_id: userId, ...body }) })
   }
 }
+
+export interface AssetRead {
+  id: number
+  account_id: number
+  symbol_or_name: string
+  asset_type: string
+  quantity: number | null
+  avg_cost: number | null
+  current_value: number | null
+  currency: string
+  expected_monthly_income: number | null
+  ownership_pct: number
+}
+
+export const getAssets = (accountId?: number) => {
+  const q = accountId != null ? `?account_id=${accountId}` : ''
+  return api<AssetRead[]>(`/assets${q}`)
+}
+
+export interface CategoryExpense {
+  category: string
+  total_base: number
+  txn_count: number
+}
+
+export const getCategoryExpenses = (months = 12) =>
+  api<CategoryExpense[]>(`/analytics/expense-by-category?months=${months}`)

@@ -7,7 +7,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Dropdown, DDItem, Donut, CashBars } from '../ui.jsx';
-import { getCashflowMonthly } from '../lib/api.ts';
+import { getCashflowMonthly, getCategoryExpenses } from '../lib/api.ts';
 
 export function CashFlowScreen({ go, currency, household }) {
   const M = (v, dec) => FMT.display(currency, v, dec);
@@ -19,6 +19,7 @@ export function CashFlowScreen({ go, currency, household }) {
   const [expanded, setExpanded] = useState(() => new Set([DATA.EXPENSE_GROUPS[0].group]));
 
   const [cf, setCf] = useState(DATA.CASHFLOW);
+  const [liveCatExp, setLiveCatExp] = useState(null);
 
   useEffect(() => {
     getCashflowMonthly(12)
@@ -31,22 +32,41 @@ export function CashFlowScreen({ go, currency, household }) {
         }
       })
       .catch(() => {});
+    getCategoryExpenses(12).then(setLiveCatExp).catch(() => {});
   }, []);
 
   const scale = view === 'yearly' ? 12 : 1;
   const periodInc = (view === 'monthly' ? cf[cf.length - 1].income : cf.reduce((s, m) => s + m.income, 0));
-  const periodExp = DATA.EXP_TOTAL * scale;
   const periodInv = DATA.INVEST_TOTAL * scale;
-  const netSaved = periodInc - periodExp;
-  const savingsRate = Math.round(netSaved / periodInc * 100);
 
   const groups = useMemo(() => {
-    const g = DATA.EXPENSE_GROUPS.map(x => ({ ...x, subs: [...x.subs] }));
+    const GROUP_COLORS = Object.fromEntries(DATA.EXPENSE_GROUPS.map(g => [g.group, g.color]));
+    let base;
+    if (liveCatExp) {
+      const catMap = Object.fromEntries(DATA.CATEGORIES.map(c => [c.id, c]));
+      const raw = {};
+      for (const { category, total_base, txn_count } of liveCatExp) {
+        const cat = catMap[category];
+        const groupName = cat?.group ?? 'Other';
+        const groupColor = GROUP_COLORS[groupName] ?? '#8595AD';
+        if (!raw[groupName]) raw[groupName] = { group: groupName, color: groupColor, total: 0, subs: [] };
+        raw[groupName].total += total_base;
+        raw[groupName].subs.push({ id: category, name: cat?.name ?? category, amount: total_base, color: cat?.color ?? '#8595AD', txns: txn_count });
+      }
+      base = Object.values(raw);
+    } else {
+      base = DATA.EXPENSE_GROUPS.map(x => ({ ...x, subs: [...x.subs] }));
+    }
     const cmp = sort === 'amount' ? (a, b) => b.total - a.total : (a, b) => a.group.localeCompare(b.group);
-    g.sort(cmp);
-    g.forEach(grp => grp.subs.sort(sort === 'amount' ? (a, b) => b.amount - a.amount : (a, b) => a.name.localeCompare(b.name)));
-    return g;
-  }, [sort]);
+    base.sort(cmp);
+    base.forEach(grp => grp.subs.sort(sort === 'amount' ? (a, b) => b.amount - a.amount : (a, b) => a.name.localeCompare(b.name)));
+    return base;
+  }, [liveCatExp, sort]);
+
+  const expTotal = useMemo(() => groups.reduce((s, g) => s + g.total, 0), [groups]);
+  const periodExp = expTotal * scale;
+  const netSaved = periodInc - periodExp;
+  const savingsRate = Math.round(netSaved / periodInc * 100);
   const maxGroup = Math.max(...groups.map(g => g.total));
 
   const toggle = (id) => setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -106,7 +126,7 @@ export function CashFlowScreen({ go, currency, household }) {
             {groups.map(g => (
               <div key={g.group} className="legend-row clickable" style={{ justifyContent: 'space-between' }} onClick={() => { toggle(g.group); }}>
                 <span className="legend-row"><i style={{ background: g.color }} />{g.group}</span>
-                <span className="mono" style={{ fontWeight: 700 }}>{Math.round(g.total / DATA.EXP_TOTAL * 100)}%</span>
+                <span className="mono" style={{ fontWeight: 700 }}>{Math.round(g.total / expTotal * 100)}%</span>
               </div>
             ))}
           </div>
@@ -143,7 +163,7 @@ export function CashFlowScreen({ go, currency, household }) {
                       </div>
                       <div className="bar" style={{ height: 6 }}><i style={{ width: (g.total / maxGroup * 100) + '%', background: g.color, boxShadow: 'none' }} /></div>
                     </div>
-                    <span className="mono" style={{ textAlign: 'right', color: 'var(--text-3)', fontSize: 12.5 }}>{Math.round(g.total / DATA.EXP_TOTAL * 100)}%</span>
+                    <span className="mono" style={{ textAlign: 'right', color: 'var(--text-3)', fontSize: 12.5 }}>{Math.round(g.total / expTotal * 100)}%</span>
                     <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 15 }}>{M(g.total * scale)}</span>
                   </div>
 

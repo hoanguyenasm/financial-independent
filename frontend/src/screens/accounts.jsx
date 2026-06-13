@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Donut, AreaChart } from '../ui.jsx';
-import { getAccounts, createAccount } from '../lib/api.ts';
+import { getAccounts, createAccount, getAssets } from '../lib/api.ts';
 
 function typeToClass(type) {
   if (type === 'crypto') return 'crypto';
@@ -23,6 +23,7 @@ export function AccountsScreen({ go, currency, household }) {
 
   const [liveAccounts, setLiveAccounts] = useState(DATA.ACCOUNTS);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [liveAssets, setLiveAssets] = useState(DATA.ASSETS);
 
   useEffect(() => {
     getAccounts().then(data => {
@@ -39,6 +40,9 @@ export function AccountsScreen({ go, currency, household }) {
         })));
       }
     }).catch(() => {});
+    getAssets().then(data => {
+      if (data.length > 0) setLiveAssets(data);
+    }).catch(() => {});
   }, []);
 
   const nw = DATA.NW_SERIES;
@@ -50,11 +54,33 @@ export function AccountsScreen({ go, currency, household }) {
     const value = a.qty * a.price, cost = a.qty * a.avg;
     return { value, cost, valueBase: FMT.toBase(a.currency, value), costBase: FMT.toBase(a.currency, cost), gain: (a.price - a.avg) / a.avg };
   };
+  const assets = liveAssets.map(a => {
+    const rawType = 'symbol_or_name' in a ? a.asset_type : a.type;
+    const name = 'symbol_or_name' in a ? a.symbol_or_name : a.name;
+    const type = ['etf', 'stock', 'bond'].includes(rawType) ? 'stocks'
+      : rawType === 'real_estate' ? 'realestate'
+      : rawType;
+    const qty = ('qty' in a ? a.qty : a.quantity) ?? 0;
+    const currentVal = 'current_value' in a ? (a.current_value ?? 0) : a.qty * a.price;
+    const avgCost = ('avg_cost' in a ? a.avg_cost : a.avg) ?? 0;
+    return {
+      id: a.id,
+      name,
+      type,
+      sub: rawType,
+      qty,
+      price: qty > 0 ? currentVal / qty : 0,
+      avg: avgCost,
+      currency: a.currency,
+      ownership: ('ownership_pct' in a ? a.ownership_pct : a.ownership) ?? 100,
+      monthly_income: ('expected_monthly_income' in a ? a.expected_monthly_income : a.monthly_income) ?? 0,
+    };
+  });
   const groups = [
-    { key: 'stocks', label: 'Stocks & ETFs', items: DATA.ASSETS.filter(a => a.type === 'stocks') },
-    { key: 'crypto', label: 'Crypto', items: DATA.ASSETS.filter(a => a.type === 'crypto') },
-    { key: 'gold', label: 'Gold', items: DATA.ASSETS.filter(a => a.type === 'gold') },
-    { key: 'realestate', label: 'Real estate', items: DATA.ASSETS.filter(a => a.type === 'realestate') },
+    { key: 'stocks', label: 'Stocks & ETFs', items: assets.filter(a => a.type === 'stocks') },
+    { key: 'crypto', label: 'Crypto', items: assets.filter(a => a.type === 'crypto') },
+    { key: 'gold', label: 'Gold', items: assets.filter(a => a.type === 'gold') },
+    { key: 'realestate', label: 'Real estate', items: assets.filter(a => a.type === 'realestate') },
   ];
 
   return (
