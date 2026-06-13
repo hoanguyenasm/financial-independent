@@ -92,6 +92,16 @@ export interface AccountRead {
 export const getAccounts = (activeOnly = false) =>
   api<AccountRead[]>(`/accounts${activeOnly ? '?active_only=true' : ''}`)
 
+export interface AccountCreate {
+  name: string
+  type: string
+  currency: string
+  institution?: string
+}
+
+export const createAccount = (body: AccountCreate) =>
+  api<AccountRead>('/accounts', { method: 'POST', body: JSON.stringify(body) })
+
 export interface TransactionRead {
   id: number
   account_id: number
