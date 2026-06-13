@@ -16,6 +16,8 @@ export function DashboardScreen({ go, currency, household }) {
   const [passiveIncome, setPassiveIncome] = useState(S.passive_income);
   const [monthlyExpenses, setMonthlyExpenses] = useState(S.monthly_expenses);
   const [savingsRatePct, setSavingsRatePct] = useState(S.savings_rate_month);
+  const [netWorth, setNetWorth] = useState(S.net_worth);
+  const [fiTarget, setFiTarget] = useState(S.fi_target);
 
   useEffect(() => {
     getAnalyticsSummary()
@@ -24,6 +26,8 @@ export function DashboardScreen({ go, currency, household }) {
         setPassiveIncome(s.passive_income_monthly);
         setMonthlyExpenses(s.monthly_expenses);
         setSavingsRatePct(Math.round(s.savings_rate * 100));
+        if (s.net_worth > 0) setNetWorth(s.net_worth);
+        if (s.fi_target > 0) setFiTarget(s.fi_target);
       })
       .catch(() => {});
   }, []);
@@ -35,7 +39,7 @@ export function DashboardScreen({ go, currency, household }) {
   const aheadBase = Math.round((S.plan_date - FIRE.fiDate(baseN)) / (1000 * 60 * 60 * 24 * 30.44));
   const ahead = Math.round((S.plan_date - fiD) / (1000 * 60 * 60 * 24 * 30.44));
   const saved = baseN - n;
-  const pct = S.net_worth / S.fi_target;
+  const pct = fiTarget > 0 ? netWorth / fiTarget : 0;
 
   const coverage = passiveIncome / (monthlyExpenses || 1);
   const savingsSeries = [40, 52, 46, 60, 50, 55, 48, 63, 54, 58, 51, 74];
@@ -52,15 +56,15 @@ export function DashboardScreen({ go, currency, household }) {
         <div style={{ padding: '26px 30px' }}>
           <div className="eyebrow">Financial independence · net worth</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, marginTop: 12 }}>
-            <div className="num" style={{ fontSize: 52, fontWeight: 800, letterSpacing: '-.03em', lineHeight: .95 }}>{M(S.net_worth)}</div>
-            <div className="num" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-3)', marginBottom: 7 }}>/ {M(S.fi_target)}</div>
+            <div className="num" style={{ fontSize: 52, fontWeight: 800, letterSpacing: '-.03em', lineHeight: .95 }}>{M(netWorth)}</div>
+            <div className="num" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-3)', marginBottom: 7 }}>/ {M(fiTarget)}</div>
             <div className="tag accent" style={{ margin: '0 0 9px auto', fontSize: 14 }}>{(pct * 100).toFixed(1)}% there</div>
           </div>
           <div className="fx" style={{ marginBottom: 22 }}>incl. {M(S.re_equity)} Stuttgart apartment · <span style={{ color: 'var(--pos)' }}>+{MC(9200)} this month</span></div>
 
           <div className="bar" style={{ height: 18 }}><i style={{ width: pct * 100 + '%' }} /></div>
           <div style={{ position: 'relative', height: 30, marginTop: 18 }}>
-            {[['0%', MC(0)], ['25%', MC(S.fi_target * 0.25)], ['50%', MC(S.fi_target * 0.5)], ['75%', 'Lean FI'], ['100%', 'FI · ' + MC(S.fi_target)]].map(([l, t], i) => (
+            {[['0%', MC(0)], ['25%', MC(fiTarget * 0.25)], ['50%', MC(fiTarget * 0.5)], ['75%', 'Lean FI'], ['100%', 'FI · ' + MC(fiTarget)]].map(([l, t], i) => (
               <React.Fragment key={i}>
                 {i > 0 && <span style={{ position: 'absolute', top: -22, left: l, width: 1, height: 14, background: i === 4 ? 'var(--accent)' : 'var(--border-2)', transform: 'translateX(-50%)', boxShadow: i === 4 ? '0 0 8px var(--accent)' : 'none' }} />}
                 <span style={{ position: 'absolute', left: l, transform: 'translateX(-50%)', fontSize: 11, fontWeight: 700, color: i === 4 ? 'var(--accent)' : 'var(--text-3)', whiteSpace: 'nowrap' }}>{t}</span>
@@ -91,7 +95,7 @@ export function DashboardScreen({ go, currency, household }) {
           <div className="sep" style={{ margin: '24px 0' }} />
           <div className="kpi-label" style={{ marginBottom: 10 }}>Net-worth trajectory</div>
           <AreaChart id="hero" values={DATA.NW_SERIES.map(p => p.value)} h={96}
-            color="var(--accent)" target={S.fi_target} targetLabel={MC(S.fi_target) + ' · FI'} gridY={2} max={S.fi_target * 1.04} />
+            color="var(--accent)" target={fiTarget} targetLabel={MC(fiTarget) + ' · FI'} gridY={2} max={fiTarget * 1.04} />
         </div>
       </section>
 
