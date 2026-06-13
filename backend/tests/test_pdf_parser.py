@@ -51,3 +51,17 @@ def test_parse_pdf_default_currency():
     pdf_bytes = _make_pdf_bytes(data)
     rows = parse_pdf(io.BytesIO(pdf_bytes), default_currency="USD")
     assert rows[0].currency == "USD"
+
+
+def test_parse_pdf_no_tables_page():
+    """Pages with no detectable tables should return empty list, not crash."""
+    from reportlab.platypus import Paragraph
+    from reportlab.lib.styles import getSampleStyleSheet
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4)
+    styles = getSampleStyleSheet()
+    doc.build([Paragraph("No tables here.", styles["Normal"])])
+    buf.seek(0)
+    rows = parse_pdf(buf)
+    assert rows == []

@@ -19,7 +19,7 @@ def parse_pdf(file: BinaryIO, default_currency: str = "EUR") -> list[ParsedRow]:
     rows: list[ParsedRow] = []
     with pdfplumber.open(file) as pdf:
         for page in pdf.pages:
-            tables = page.extract_tables()
+            tables = page.extract_tables() or []
             for table in tables:
                 if not table or len(table) < 2:
                     continue
