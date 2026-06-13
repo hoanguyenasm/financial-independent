@@ -56,8 +56,8 @@ export function AccountsScreen({ go, currency, household }) {
       })
     : DATA.NW_SERIES;
   const series = range === '12' ? nw.slice(-12) : nw;
-  const startV = series[0].value, endV = series[series.length - 1].value;
-  const change = endV - startV, changePct = change / startV;
+  const startV = series[0]?.value ?? 0, endV = series[series.length - 1]?.value ?? 0;
+  const change = endV - startV, changePct = startV !== 0 ? change / startV : 0;
 
   const calc = (a) => {
     const value = a.qty * a.price, cost = a.qty * a.avg;
@@ -100,7 +100,7 @@ export function AccountsScreen({ go, currency, household }) {
     cash:       { label: 'Cash & savings', color: 'var(--c-cash)' },
   };
   const liveAllocation = React.useMemo(() => {
-    if (liveAssets === DATA.ASSETS) return liveAllocation;
+    if (liveAssets === DATA.ASSETS) return DATA.ALLOCATION;
     const totals = {};
     for (const a of liveAssets) {
       const rawType = 'symbol_or_name' in a ? a.asset_type : a.type;

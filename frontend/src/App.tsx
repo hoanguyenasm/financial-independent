@@ -1,7 +1,8 @@
 /* ============================================================
    FIRE Tracker — app shell (nav state, deep links)
    ============================================================ */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Component } from 'react'
+import type { ReactNode } from 'react'
 import { DATA } from './data.js'
 import { TopNav } from './ui.jsx'
 import { DashboardScreen } from './screens/dashboard.jsx'
@@ -9,6 +10,21 @@ import { CashFlowScreen } from './screens/cashflow.jsx'
 import { AccountsScreen } from './screens/accounts.jsx'
 import { TransactionsScreen } from './screens/transactions.jsx'
 import { SettingsScreen } from './screens/settings.jsx'
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { err: string | null }> {
+  state = { err: null }
+  static getDerivedStateFromError(e: Error) { return { err: e.message } }
+  render() {
+    if (this.state.err) return (
+      <div style={{ padding: 40, color: 'var(--neg)', fontFamily: 'monospace' }}>
+        <b>Something went wrong on this screen.</b>
+        <pre style={{ marginTop: 12, fontSize: 12, opacity: .7 }}>{this.state.err}</pre>
+        <button style={{ marginTop: 16 }} onClick={() => this.setState({ err: null })}>Try again</button>
+      </div>
+    )
+    return this.props.children
+  }
+}
 
 function ls(key: string, fallback: string): string {
   try {
@@ -65,7 +81,7 @@ export default function App() {
         setCurrency={setCurrency}
         reviewCount={reviewCount}
       />
-      <div className="scroll">{body}</div>
+      <div className="scroll"><ErrorBoundary key={screen}>{body}</ErrorBoundary></div>
     </>
   )
 }
