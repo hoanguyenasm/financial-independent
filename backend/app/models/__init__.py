@@ -7,5 +7,7 @@ from .fi_goal import FIGoal
 from .category_rule import CategoryRule
 from .fx_rate import FXRate
 from .import_log import ImportLog
+from .nw_snapshot import NWSnapshot
 
-__all__ = ["Base", "User", "Account", "Transaction", "Asset", "FIGoal", "CategoryRule", "FXRate", "ImportLog"]
+__all__ = ["Base", "User", "Account", "Transaction", "Asset", "FIGoal",
+           "CategoryRule", "FXRate", "ImportLog", "NWSnapshot"]
