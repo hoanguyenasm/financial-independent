@@ -15,13 +15,17 @@ function typeToClass(type) {
   return 'bank';
 }
 
-export function TransactionsScreen({ go, currency, household, initialFilter, registerSetReview }) {
+export function TransactionsScreen({ go, currency, household, initialFilter, registerSetReview, myUserId = 1 }) {
   const [tx, setTx] = useState(() => DATA.TX.map(t => ({ ...t })));
   const [accounts, setAccounts] = useState(DATA.ACCOUNTS);
   const acctMap = useMemo(
     () => Object.fromEntries(accounts.map(a => [a.id, a])),
     [accounts]
   );
+  const partnerUserId = useMemo(() => {
+    const other = tx.find(t => t.user_id !== myUserId);
+    return other ? other.user_id : (myUserId === 1 ? 2 : 1);
+  }, [tx, myUserId]);
   const [q, setQ] = useState('');
   const [fAcct, setFAcct] = useState('all');
   const [fCat, setFCat] = useState('all');
@@ -75,8 +79,14 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
       if (needsReview && !t.needs_review) return false;
       if (fAcct !== 'all' && t.account_id !== fAcct) return false;
       if (fCat !== 'all' && t.category !== fCat) return false;
-      if (fUser !== 'all' && t.user_id !== fUser) return false;
-      if (household !== 'household' && t.user_id !== household) return false;
+      if (fUser !== 'all') {
+        const resolvedUser = fUser === 'you' ? myUserId : partnerUserId;
+        if (t.user_id !== resolvedUser) return false;
+      }
+      if (household !== 'household') {
+        const resolvedHousehold = household === 'you' ? myUserId : partnerUserId;
+        if (t.user_id !== resolvedHousehold) return false;
+      }
       if (fRange !== 'all' && t.d < cut) return false;
       if (q && !(t.desc.toLowerCase().includes(q.toLowerCase()) || (FMT.catName(t.category) || '').toLowerCase().includes(q.toLowerCase()))) return false;
       return true;
@@ -199,7 +209,7 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
                 <td className="r mono" style={{ fontWeight: 700, color: t.amount >= 0 ? 'var(--pos)' : 'var(--text)' }}>{FMT.orig(t.currency, t.amount)}</td>
                 <td className="r mono" style={{ color: t.amount_base >= 0 ? 'var(--pos)' : 'var(--text-2)', fontSize: 12 }}>{FMT.display(currency, t.amount_base, currency === 'VND' ? 0 : 2)}</td>
                 <td><span className="row" style={{ gap: 8, fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}><span style={{ width: 7, height: 7, borderRadius: 2, background: `var(--c-${acctMap[t.account_id]?.cls ?? 'other'})` }} />{acctMap[t.account_id]?.name ?? 'Unknown'}</span></td>
-                <td className="c"><Avatar user={t.user_id} size={22} /></td>
+                <td className="c"><Avatar user={t.user_id === myUserId ? 'you' : 'partner'} size={22} /></td>
               </tr>
             ))}
             {view.length === 0 && <tr><td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-3)', padding: 40 }}>No transactions match these filters.</td></tr>}

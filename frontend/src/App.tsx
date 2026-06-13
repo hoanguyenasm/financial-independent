@@ -34,6 +34,7 @@ export default function App() {
   const [household, setHousehold] = useState(() => ls('household', 'household'))
   const [currency, setCurrency] = useState(() => ls('currency', 'EUR'))
   const [reviewCount, setReviewCount] = useState<number>(DATA.SUMMARY.needs_review)
+  const [myUserId] = useState(() => Number(ls('my_user_id', '1')))
 
   const go = (s: string, p: Params = {}) => {
     setScreen(s)
@@ -50,7 +51,7 @@ export default function App() {
   else if (screen === 'cashflow') body = <CashFlowScreen {...common} />
   else if (screen === 'accounts') body = <AccountsScreen {...common} />
   else if (screen === 'transactions')
-    body = <TransactionsScreen {...common} initialFilter={params} registerSetReview={setReviewCount} />
+    body = <TransactionsScreen {...common} initialFilter={params} registerSetReview={setReviewCount} myUserId={myUserId} />
   else if (screen === 'settings') body = <SettingsScreen {...common} initialTab={params.tab} />
 
   return (
