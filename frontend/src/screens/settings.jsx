@@ -36,9 +36,10 @@ function typeToClass(type) {
 }
 
 function ImportTab() {
-  const [phase, setPhase] = useState('idle');     // idle | uploading | result
+  const [uploading, setUploading] = useState(false);
   const [over, setOver] = useState(false);
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(null);   // last import log
+  const [error, setError] = useState('');       // persistent error message
   const [history, setHistory] = useState(DATA.IMPORTS);
   const [, showToast] = useToast();
   const [pathInput, setPathInput] = useState('');
@@ -54,11 +55,8 @@ function ImportTab() {
     getAccounts(true).then(data => {
       if (data.length > 0) {
         const adapted = data.map(a => ({
-          id: a.id,
-          name: a.name,
-          type: a.type,
-          cls: typeToClass(a.type),
-          is_active: a.is_active,
+          id: a.id, name: a.name, type: a.type,
+          cls: typeToClass(a.type), is_active: a.is_active,
         }));
         setAccounts(adapted);
         setSelectedAccountId(adapted[0].id);
@@ -66,118 +64,112 @@ function ImportTab() {
     }).catch(() => {});
   }, []);
 
-  const loadHistory = () =>
-    getImportLogs().then(setHistory).catch(() => {});
-
+  const loadHistory = () => getImportLogs().then(setHistory).catch(() => {});
   useEffect(() => { loadHistory(); }, []);
+
+  const afterImport = (log) => {
+    localStorage.setItem('fire.my_user_id', String(selectedUserId));
+    setResult(log);
+    setError('');
+    loadHistory();
+    if (log.rows_imported === 0 && log.rows_skipped === 0) {
+      showToast('No rows parsed — format may not be supported yet', 'x');
+    } else {
+      showToast(`Imported ${log.rows_imported} · ${log.rows_skipped} duplicates · ${log.rows_uncategorized} need review`, 'check');
+    }
+  };
 
   const handleFile = async (file) => {
     if (!file) return;
-    setPhase('uploading');
+    setUploading(true); setError(''); setResult(null);
     try {
-      const log = await importFile(file, selectedAccountId ?? 1, selectedUserId);
-      localStorage.setItem('fire.my_user_id', String(selectedUserId));
-      setResult(log);
-      setPhase('result');
-      showToast(`Imported ${log.rows_imported} transactions · ${log.rows_uncategorized} need review`, 'check');
-      loadHistory();
+      afterImport(await importFile(file, selectedAccountId ?? 1, selectedUserId));
     } catch (err) {
-      showToast(`Import failed: ${err.message}`, 'x');
-      setPhase('idle');
+      setError(err.message || 'Import failed');
+    } finally {
+      setUploading(false);
     }
   };
 
   const handlePathImport = async () => {
-    if (!pathInput.trim()) return;
-    setPhase('uploading');
+    const path = pathInput.trim();
+    if (!path) return;
+    setUploading(true); setError(''); setResult(null);
     try {
-      const log = await importFromPath(pathInput.trim(), selectedAccountId ?? 1, selectedUserId);
-      localStorage.setItem('fire.my_user_id', String(selectedUserId));
-      setResult(log);
-      setPhase('result');
-      showToast(`Imported ${log.rows_imported} transactions · ${log.rows_uncategorized} need review`, 'check');
-      loadHistory();
+      afterImport(await importFromPath(path, selectedAccountId ?? 1, selectedUserId));
     } catch (err) {
-      showToast(`Import failed: ${err.message}`, 'x');
-      setPhase('idle');
+      setError(err.message || 'Import failed');
+    } finally {
+      setUploading(false);
     }
   };
-
-  const reset = () => { setPhase('idle'); setResult(null); };
 
   return (
     <>
       <div className="grid" style={{ gridTemplateColumns: '1fr 280px', marginBottom: 22, alignItems: 'start' }}>
-        {phase === 'idle' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className={'dropzone' + (over ? ' over' : '')}
-              onDragOver={e => { e.preventDefault(); setOver(true); }}
-              onDragLeave={() => setOver(false)}
-              onDrop={e => { e.preventDefault(); setOver(false); handleFile(e.dataTransfer.files?.[0]); }}>
-              <span style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                <Icon n="upload" s={26} c="var(--accent)" />
-              </span>
-              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Drop a PDF or CSV statement here</div>
-              <div className="kpi-sub" style={{ marginBottom: 4 }}>or click to browse · Comdirect, ING, Trade Republic, Scalable, Revolut supported</div>
-              <div className="fx">We never store your bank credentials</div>
-              <input type="file" accept=".csv,.pdf" style={{ display: 'none' }}
-                id="import-file-input"
-                onChange={e => handleFile(e.target.files?.[0])} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* dropzone */}
+          <div className={'dropzone' + (over ? ' over' : '') + (uploading ? ' disabled' : '')}
+            onDragOver={e => { if (!uploading) { e.preventDefault(); setOver(true); } }}
+            onDragLeave={() => setOver(false)}
+            onDrop={e => { e.preventDefault(); setOver(false); if (!uploading) handleFile(e.dataTransfer.files?.[0]); }}>
+            <span style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <Icon n="upload" s={26} c="var(--accent)" />
+            </span>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>
+              {uploading ? 'Parsing…' : 'Drop a PDF or CSV statement here'}
+            </div>
+            <div className="kpi-sub" style={{ marginBottom: 4 }}>
+              {uploading ? 'Applying category rules and checking for duplicates'
+                : 'or click to browse · Comdirect, ING, Trade Republic, Scalable, Revolut supported'}
+            </div>
+            {!uploading && <div className="fx">We never store your bank credentials</div>}
+            <input type="file" accept=".csv,.pdf" style={{ display: 'none' }}
+              id="import-file-input"
+              onChange={e => handleFile(e.target.files?.[0])} />
+            {!uploading && (
               <button className="btn ghost" style={{ marginTop: 14 }}
                 onClick={e => { e.stopPropagation(); document.getElementById('import-file-input').click(); }}>
                 Browse files
               </button>
-            </div>
-            <div className="card tight">
-              <label className="fld" style={{ marginBottom: 8 }}>Import from file path</label>
-              <div className="row" style={{ gap: 8 }}>
-                <input className="inp mono" style={{ flex: 1, fontSize: 12 }}
-                  placeholder="G:\My Drive\budget\statement.pdf"
-                  value={pathInput}
-                  onChange={e => setPathInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handlePathImport()} />
-                <button className="btn primary sm" onClick={handlePathImport} disabled={!pathInput.trim()}>
-                  Import
-                </button>
-              </div>
-              <div className="fx" style={{ marginTop: 6 }}>Full path to a local PDF or CSV — the backend reads it directly</div>
-            </div>
+            )}
           </div>
-        )}
 
-        {phase === 'uploading' && (
-          <div className="card fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 180 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Uploading & parsing…</div>
-              <div className="fx">Applying category rules and checking for duplicates</div>
+          {/* path import — always visible */}
+          <div className="card tight">
+            <label className="fld" style={{ marginBottom: 8 }}>Import from file path</label>
+            <div className="row" style={{ gap: 8 }}>
+              <input className="inp mono" style={{ flex: 1, fontSize: 12 }}
+                placeholder="G:\My Drive\budget\statement.pdf"
+                value={pathInput}
+                onChange={e => { setPathInput(e.target.value); setError(''); setResult(null); }}
+                onKeyDown={e => e.key === 'Enter' && !uploading && handlePathImport()}
+                disabled={uploading} />
+              <button className="btn primary sm" onClick={handlePathImport}
+                disabled={!pathInput.trim() || uploading}>
+                {uploading ? '…' : 'Import'}
+              </button>
             </div>
-          </div>
-        )}
-
-        {phase === 'result' && result && (
-          <div className="card fade-in">
-            <div className="spread" style={{ marginBottom: 16 }}>
-              <div className="row" style={{ gap: 11 }}>
-                <span style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon n="doc" s={19} c="var(--accent)" />
-                </span>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: 14 }}>{result.filename}</div>
-                  <div className="fx">{result.source_type.toUpperCase()} · {new Date(result.imported_at).toLocaleString()}</div>
-                </div>
+            {/* persistent error */}
+            {error && (
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--neg)', fontWeight: 600, wordBreak: 'break-word' }}>
+                ✗ {error}
               </div>
-              <button className="btn ghost icon" onClick={reset}><Icon n="x" s={16} /></button>
-            </div>
-            <div className="gridcols-3" style={{ marginBottom: 18 }}>
-              <PreviewStat n={result.rows_imported} label="imported" color="var(--pos)" />
-              <PreviewStat n={result.rows_skipped} label="duplicates skipped" color="var(--text-2)" />
-              <PreviewStat n={result.rows_uncategorized} label="need review" color="var(--warn)" />
-            </div>
-            <div className="row" style={{ justifyContent: 'flex-end' }}>
-              <button className="btn primary" onClick={reset}><Icon n="upload" s={15} c="#04121d" />Import another</button>
-            </div>
+            )}
+            {/* inline result */}
+            {result && !error && (
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--pos)', fontWeight: 600 }}>
+                ✓ {result.filename}: {result.rows_imported} imported · {result.rows_skipped} duplicates · {result.rows_uncategorized} need review
+                {result.rows_imported === 0 && result.rows_skipped === 0 && (
+                  <span style={{ color: 'var(--warn)', display: 'block', marginTop: 2 }}>
+                    No rows parsed — file format may not be supported
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="fx" style={{ marginTop: 6 }}>Full path to a local PDF or CSV — the backend reads it directly</div>
           </div>
-        )}
+        </div>
 
         <div className="card tight">
           <label className="fld">Target account</label>
