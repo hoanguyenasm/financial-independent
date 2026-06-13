@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from app.parsers.models import ParsedRow
 from app.models import Transaction, CategoryRule, ImportLog
 
@@ -37,7 +37,9 @@ class ImportService:
         filename: str,
         source_type: str,
     ) -> ImportLog:
-        rules = db.query(CategoryRule).all()
+        rules = db.query(CategoryRule).filter(
+            or_(CategoryRule.account_id == account_id, CategoryRule.account_id.is_(None))
+        ).all()
         imported = skipped = uncategorized = 0
 
         for row in rows:
