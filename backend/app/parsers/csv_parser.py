@@ -77,7 +77,7 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
     if date_col is None or desc_col is None:
         return []
     has_single_amount = amt_col is not None
-    has_soll_haben = debit_col is not None or credit_col is not None
+    has_debit_or_credit = debit_col is not None or credit_col is not None
 
     rows: list[ParsedRow] = []
     for raw in reader:
@@ -91,7 +91,7 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
 
         if has_single_amount:
             amount = _parse_amount(cell(amt_col))
-        elif has_soll_haben:
+        elif has_debit_or_credit:
             debit  = _parse_amount(cell(debit_col))  if debit_col  is not None else None
             credit = _parse_amount(cell(credit_col)) if credit_col is not None else None
             if debit and debit > 0:
@@ -106,6 +106,7 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
         if amount is None:
             continue
 
-        currency = cell(cur_col) if cur_col is not None and cell(cur_col) else default_currency
+        cur_value = cell(cur_col) if cur_col is not None else ""
+        currency = cur_value if cur_value else default_currency
         rows.append(ParsedRow(date=parsed_date, description=cell(desc_col), amount=amount, currency=currency))
     return rows
