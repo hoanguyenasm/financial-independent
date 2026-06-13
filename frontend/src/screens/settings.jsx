@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings } from '../lib/api.ts';
+import { getSettings, updateSettings, deleteCategoryRule } from '../lib/api.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'import');
@@ -222,7 +222,7 @@ function SettingsTab({ currency, setCurrency }) {
                 <Icon n="arrowR" s={13} c="var(--text-3)" />
                 <span className="catcell" style={{ color: FMT.catColor(r.cat) }}><span className="dot-c" style={{ background: FMT.catColor(r.cat) }} />{FMT.catName(r.cat)}</span>
               </div>
-              <div className="row" style={{ gap: 10 }}><span className="fx">{r.hits} matches</span><button className="btn icon" style={{ padding: 4, background: 'transparent', border: 0 }} onClick={() => setRules(list => list.filter(x => x.id !== r.id))}><Icon n="trash" s={15} c="var(--text-3)" /></button></div>
+              <div className="row" style={{ gap: 10 }}><span className="fx">{r.hits} matches</span><button className="btn icon" style={{ padding: 4, background: 'transparent', border: 0 }} onClick={() => { setRules(list => list.filter(x => x.id !== r.id)); deleteCategoryRule(r.id).catch(() => {}); }}><Icon n="trash" s={15} c="var(--text-3)" /></button></div>
             </div>
           ))}
         </div>

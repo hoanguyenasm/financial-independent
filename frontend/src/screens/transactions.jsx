@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Avatar, Check, Dropdown, DDItem, useToast } from '../ui.jsx';
-import { patchTransaction } from '../lib/api.ts';
+import { patchTransaction, createCategoryRule } from '../lib/api.ts';
 
 export function TransactionsScreen({ go, currency, household, initialFilter, registerSetReview }) {
   const [tx, setTx] = useState(() => DATA.TX.map(t => ({ ...t })));
@@ -193,7 +193,7 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
             </p>
             <div className="row" style={{ gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn ghost" onClick={() => { showToast('Categorized once'); setRulePrompt(null); }}>No, just this one</button>
-              <button className="btn primary" onClick={() => { showToast('Rule created · future matches auto-categorized', 'bolt'); setRulePrompt(null); }}>Yes, always</button>
+              <button className="btn primary" onClick={() => { createCategoryRule(rulePrompt.desc, rulePrompt.catId).catch(() => {}); showToast('Rule created · future matches auto-categorized', 'bolt'); setRulePrompt(null); }}>Yes, always</button>
             </div>
           </div>
         </div>

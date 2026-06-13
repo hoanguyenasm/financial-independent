@@ -21,3 +21,9 @@ export const updateSettings = (base_currency: string) =>
 
 export const patchTransaction = (id: number, body: Record<string, unknown>) =>
   api(`/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+
+export const createCategoryRule = (pattern: string, category: string) =>
+  api('/category-rules', { method: 'POST', body: JSON.stringify({ pattern, category }) })
+
+export const deleteCategoryRule = (id: number) =>
+  api(`/category-rules/${id}`, { method: 'DELETE' })
