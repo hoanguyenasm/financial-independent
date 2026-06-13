@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import users, accounts, transactions, assets, fi_goals, settings
+from app.routers.import_router import router as import_router
 
 app = FastAPI(title="FI Tracker", version="0.1.0")
 
@@ -18,6 +19,7 @@ app.include_router(transactions.router)
 app.include_router(assets.router)
 app.include_router(fi_goals.router)
 app.include_router(settings.router)
+app.include_router(import_router)
 
 
 @app.get("/health")
