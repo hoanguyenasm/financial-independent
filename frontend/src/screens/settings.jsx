@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, deleteCategoryRule, importFile, getImportLogs, getAccounts } from '../lib/api.ts';
+import { getSettings, updateSettings, deleteCategoryRule, importFile, getImportLogs, getAccounts, getFIGoal, upsertFIGoal } from '../lib/api.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'import');
@@ -221,6 +221,17 @@ function SettingsTab({ currency, setCurrency }) {
   const [cats, setCats] = useState(DATA.CATEGORIES);
   const [rules, setRules] = useState(DATA.RULES);
   const [goal, setGoal] = useState({ target: 1500000, date: '2037-01', swr: 3.5, ret: 5.0, infl: 2.0 });
+  useEffect(() => {
+    getFIGoal(1).then(g => {
+      setGoal({
+        target: g.target_net_worth ?? 1500000,
+        date: g.target_date ? g.target_date.slice(0, 7) : '2037-01',
+        swr: +(g.safe_withdrawal_rate * 100).toFixed(2),
+        ret: +(g.investment_return_rate * 100).toFixed(2),
+        infl: +(g.inflation_rate * 100).toFixed(2),
+      });
+    }).catch(() => {});
+  }, []);
   const [fx, setFx] = useState({ USD: 0.92, VND: 27800 });
   const [newCat, setNewCat] = useState('');
   const [toast, showToast] = useToast();
@@ -259,7 +270,17 @@ function SettingsTab({ currency, setCurrency }) {
           <div><label className="fld">Safe withdrawal rate</label><div style={{ position: 'relative' }}><input className="inp mono" value={goal.swr} onChange={e => setGoal(g => ({ ...g, swr: e.target.value }))} /><span style={{ position: 'absolute', right: 12, top: 9, color: 'var(--text-3)' }}>%</span></div></div>
           <div><label className="fld">Investment return</label><div style={{ position: 'relative' }}><input className="inp mono" value={goal.ret} onChange={e => setGoal(g => ({ ...g, ret: e.target.value }))} /><span style={{ position: 'absolute', right: 12, top: 9, color: 'var(--text-3)' }}>%</span></div></div>
           <div><label className="fld">Inflation rate</label><div style={{ position: 'relative' }}><input className="inp mono" value={goal.infl} onChange={e => setGoal(g => ({ ...g, infl: e.target.value }))} /><span style={{ position: 'absolute', right: 12, top: 9, color: 'var(--text-3)' }}>%</span></div></div>
-          <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => showToast('FIRE goal updated')}>Save goal</button></div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => {
+            upsertFIGoal(1, {
+              target_net_worth: goal.target,
+              target_date: goal.date || undefined,
+              safe_withdrawal_rate: goal.swr / 100,
+              investment_return_rate: goal.ret / 100,
+              inflation_rate: goal.infl / 100,
+            })
+              .then(() => showToast('FIRE goal saved'))
+              .catch(() => showToast('Could not save — backend offline', 'x'));
+          }}>Save goal</button></div>
         </div>
         <div className="fx" style={{ marginTop: 12 }}>SWR {goal.swr}% implies a {FMT.eur(Math.round(goal.target * goal.swr / 100 / 12))}/mo safe income at target.</div>
       </section>
