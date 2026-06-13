@@ -65,6 +65,7 @@ export interface AnalyticsSummary {
   monthly_expenses: number
   savings_rate: number          // fraction 0–1
   needs_review: number
+  fi_target: number
 }
 
 export interface CashflowMonth {
@@ -118,3 +119,33 @@ export interface TransactionRead {
 
 export const getTransactions = (limit = 500) =>
   api<TransactionRead[]>(`/transactions?limit=${limit}`)
+
+export interface FIGoalRead {
+  id: number
+  user_id: number
+  target_net_worth: number | null
+  target_date: string | null
+  safe_withdrawal_rate: number
+  investment_return_rate: number
+  inflation_rate: number
+}
+
+export interface FIGoalUpsert {
+  target_net_worth: number
+  target_date?: string
+  safe_withdrawal_rate: number
+  investment_return_rate: number
+  inflation_rate: number
+}
+
+export const getFIGoal = (userId: number) =>
+  api<FIGoalRead>(`/fi-goals/user/${userId}`)
+
+export const upsertFIGoal = async (userId: number, body: FIGoalUpsert): Promise<FIGoalRead> => {
+  try {
+    const existing = await getFIGoal(userId)
+    return api<FIGoalRead>(`/fi-goals/${existing.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+  } catch {
+    return api<FIGoalRead>('/fi-goals', { method: 'POST', body: JSON.stringify({ user_id: userId, ...body }) })
+  }
+}
