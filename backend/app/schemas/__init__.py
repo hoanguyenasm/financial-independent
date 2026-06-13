@@ -5,3 +5,4 @@ from .asset import AssetCreate, AssetRead, AssetUpdate
 from .fi_goal import FIGoalCreate, FIGoalRead, FIGoalUpdate
 from .settings import AppSettingsRead, AppSettingsUpdate
 from .category_rule import CategoryRuleCreate, CategoryRuleRead
+from .fx_rate import FXRateUpsert, FXRateRead
