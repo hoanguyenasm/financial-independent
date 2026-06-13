@@ -3,15 +3,64 @@ from sqlalchemy import and_, or_
 from app.parsers.models import ParsedRow
 from app.models import Transaction, CategoryRule, ImportLog
 
+import unicodedata
+
+
+def _normalize(s: str) -> str:
+    """Lowercase + replace German umlauts with ASCII equivalents for matching."""
+    s = s.lower()
+    replacements = {"ü": "ue", "ä": "ae", "ö": "oe", "ß": "ss"}
+    for ch, rep in replacements.items():
+        s = s.replace(ch, rep)
+    return s
+
+
+# Keywords (already normalized via _normalize) indicating transaction types
+_TRANSFER_KW = {
+    "ueberweisung", "umbuchung", "transfer", "zahlungseingang", "zahlungsausgang",
+    "incoming transfer", "outgoing transfer",
+    "von eur flexible", "an eur flexible",   # Revolut money market
+    "umgetauscht", "waehrungswechsel",        # FX conversion
+    "abhebung vom geldkonto",                 # Scalable withdrawal
+}
+_INVESTMENT_BUY_KW = {
+    "savings plan execution", "kauf eines finanzinstruments", "buy trade",
+    "sparplan", "handel",
+}
+_INTEREST_KW = {"zinsen", "interest payment", "erhaltene zinsen", "zinsertrag"}
+_DIVIDEND_KW = {
+    "dividende", "dividend", "ertrag", "ausschuettung",
+    "kapitalmassnah", "cash dividend",
+}
+
+
+def _infer_type(description: str, amount: float) -> str:
+    n = _normalize(description)
+    if any(k in n for k in _INTEREST_KW):
+        return "interest"
+    if any(k in n for k in _DIVIDEND_KW):
+        return "dividend"
+    if any(k in n for k in _INVESTMENT_BUY_KW):
+        return "investment_buy" if amount < 0 else "investment_sell"
+    if any(k in n for k in _TRANSFER_KW):
+        return "transfer"
+    return "expense" if amount < 0 else "income"
+
 
 class ImportService:
 
     @staticmethod
-    def _categorize(description: str, rules: list[CategoryRule], amount: float = 0.0) -> tuple[str, bool]:
+    def _categorize(description: str, rules: list[CategoryRule], amount: float = 0.0, tx_type: str = "") -> tuple[str, bool]:
         lower_desc = description.lower()
         for rule in rules:
             if rule.pattern.lower() in lower_desc:
                 return rule.category, False
+        if tx_type in ("interest",):
+            return "interest", False
+        if tx_type in ("dividend",):
+            return "dividend", False
+        if tx_type in ("transfer", "investment_buy", "investment_sell"):
+            return tx_type, False
         if amount >= 0:
             return "income", False
         return "uncategorized", True
@@ -47,7 +96,8 @@ class ImportService:
                 skipped += 1
                 continue
 
-            category, needs_review = cls._categorize(row.description, rules, row.amount)
+            tx_type = _infer_type(row.description, row.amount)
+            category, needs_review = cls._categorize(row.description, rules, row.amount, tx_type)
             if needs_review:
                 uncategorized += 1
 
@@ -61,7 +111,7 @@ class ImportService:
                 fx_rate=None,
                 description=row.description,
                 category=category,
-                type="expense" if row.amount < 0 else "income",
+                type=tx_type,
                 needs_review=needs_review,
                 source="import",
             )
