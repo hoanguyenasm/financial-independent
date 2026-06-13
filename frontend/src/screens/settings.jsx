@@ -72,10 +72,11 @@ function ImportTab() {
     setResult(log);
     setError('');
     loadHistory();
-    if (log.rows_imported === 0 && log.rows_skipped === 0) {
+    if (log.rows_imported === 0 && log.rows_skipped === 0 && (!log.errors || log.errors.length === 0)) {
       showToast('No rows parsed — format may not be supported yet', 'x');
     } else {
-      showToast(`Imported ${log.rows_imported} · ${log.rows_skipped} duplicates · ${log.rows_uncategorized} need review`, 'check');
+      const filesPart = log.files_processed > 1 ? `${log.files_processed} files · ` : '';
+      showToast(`${filesPart}${log.rows_imported} imported · ${log.rows_skipped} duplicates · ${log.rows_uncategorized} need review`, 'check');
     }
   };
 
@@ -137,10 +138,10 @@ function ImportTab() {
 
           {/* path import — always visible */}
           <div className="card tight">
-            <label className="fld" style={{ marginBottom: 8 }}>Import from file path</label>
+            <label className="fld" style={{ marginBottom: 8 }}>Import from path (file or folder)</label>
             <div className="row" style={{ gap: 8 }}>
               <input className="inp mono" style={{ flex: 1, fontSize: 12 }}
-                placeholder="G:\My Drive\budget\statement.pdf"
+                placeholder="G:\My Drive\12_Budget_2026\ING_Hoa  or  G:\...\statement.pdf"
                 value={pathInput}
                 onChange={e => { setPathInput(e.target.value); setError(''); setResult(null); }}
                 onKeyDown={e => e.key === 'Enter' && !uploading && handlePathImport()}
@@ -158,16 +159,24 @@ function ImportTab() {
             )}
             {/* inline result */}
             {result && !error && (
-              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--pos)', fontWeight: 600 }}>
-                ✓ {result.filename}: {result.rows_imported} imported · {result.rows_skipped} duplicates · {result.rows_uncategorized} need review
-                {result.rows_imported === 0 && result.rows_skipped === 0 && (
+              <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600 }}>
+                <span style={{ color: 'var(--pos)' }}>
+                  ✓ {result.files_processed > 1 ? `${result.files_processed} files` : (result.filename || '1 file')} · {result.rows_imported} imported · {result.rows_skipped} duplicates · {result.rows_uncategorized} need review
+                </span>
+                {result.rows_imported === 0 && result.rows_skipped === 0 && (!result.errors || result.errors.length === 0) && (
                   <span style={{ color: 'var(--warn)', display: 'block', marginTop: 2 }}>
                     No rows parsed — file format may not be supported
                   </span>
                 )}
+                {result.errors && result.errors.length > 0 && (
+                  <div style={{ color: 'var(--warn)', marginTop: 4 }}>
+                    {result.errors.length} file(s) failed:
+                    {result.errors.map((e, i) => <div key={i} style={{ paddingLeft: 8, opacity: 0.85 }}>• {e}</div>)}
+                  </div>
+                )}
               </div>
             )}
-            <div className="fx" style={{ marginTop: 6 }}>Full path to a local PDF or CSV — the backend reads it directly</div>
+            <div className="fx" style={{ marginTop: 6 }}>Path to a PDF/CSV file or a folder — subfolders are crawled automatically</div>
           </div>
         </div>
 

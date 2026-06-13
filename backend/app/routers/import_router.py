@@ -7,7 +7,7 @@ from app.database import get_db
 from app.parsers import parse_csv, parse_pdf
 from app.services.import_service import ImportService
 from app.models import ImportLog
-from app.schemas import ImportLogRead
+from app.schemas import ImportLogRead, PathImportResult
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -49,7 +49,7 @@ async def import_file(
     return log
 
 
-@router.post("/from-path", response_model=ImportLogRead, status_code=201)
+@router.post("/from-path", response_model=PathImportResult, status_code=201)
 async def import_from_path(
     path: str = Form(...),
     account_id: int = Form(...),
@@ -57,26 +57,51 @@ async def import_from_path(
     db: Session = Depends(get_db),
 ):
     path = path.strip()
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=422, detail=f"File not found: {path}")
-    ext = _extension(path)
-    if ext not in _ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=422, detail=f"Unsupported file type: .{ext}")
-    try:
-        with open(path, "rb") as f:
-            raw = f.read()
-        if ext == "csv":
-            rows = parse_csv(io.StringIO(raw.decode("utf-8-sig")))
-        else:
-            rows = parse_pdf(io.BytesIO(raw))
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Failed to parse: {exc}") from exc
-    log = ImportService.run(
-        db=db, rows=rows,
-        account_id=account_id, user_id=user_id,
-        filename=os.path.basename(path), source_type=ext,
+
+    # Collect files: single file or recursive directory walk
+    if os.path.isfile(path):
+        files = [path]
+    elif os.path.isdir(path):
+        files = []
+        for root, _, fnames in os.walk(path):
+            for fname in sorted(fnames):
+                if _extension(fname) in _ALLOWED_EXTENSIONS:
+                    files.append(os.path.join(root, fname))
+        if not files:
+            raise HTTPException(status_code=422, detail=f"No CSV or PDF files found in: {path}")
+    else:
+        raise HTTPException(status_code=422, detail=f"Path not found: {path}")
+
+    total_imported = total_skipped = total_uncategorized = 0
+    errors: list[str] = []
+
+    for fpath in files:
+        ext = _extension(fpath)
+        try:
+            with open(fpath, "rb") as f:
+                raw = f.read()
+            if ext == "csv":
+                rows = parse_csv(io.StringIO(raw.decode("utf-8-sig")))
+            else:
+                rows = parse_pdf(io.BytesIO(raw))
+            log = ImportService.run(
+                db=db, rows=rows,
+                account_id=account_id, user_id=user_id,
+                filename=os.path.basename(fpath), source_type=ext,
+            )
+            total_imported += log.rows_imported
+            total_skipped += log.rows_skipped
+            total_uncategorized += log.rows_uncategorized
+        except Exception as exc:
+            errors.append(f"{os.path.basename(fpath)}: {exc}")
+
+    return PathImportResult(
+        files_processed=len(files),
+        rows_imported=total_imported,
+        rows_skipped=total_skipped,
+        rows_uncategorized=total_uncategorized,
+        errors=errors,
     )
-    return log
 
 
 @router.get("/logs", response_model=list[ImportLogRead])

@@ -14,3 +14,11 @@ class ImportLogRead(BaseModel):
     imported_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PathImportResult(BaseModel):
+    files_processed: int
+    rows_imported: int
+    rows_skipped: int
+    rows_uncategorized: int
+    errors: list[str]

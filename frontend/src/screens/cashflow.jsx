@@ -44,7 +44,14 @@ export function CashFlowScreen({ go, currency, household }) {
   }, [drill]);
 
   const scale = view === 'yearly' ? 12 : 1;
-  const periodInc = (view === 'monthly' ? cf[cf.length - 1].income : cf.reduce((s, m) => s + m.income, 0));
+  // For monthly view, use the last month that has any data (current month may be empty mid-month)
+  const lastDataIdx = (() => {
+    for (let i = cf.length - 1; i >= 0; i--) {
+      if (cf[i].income > 0 || cf[i].expense > 0) return i;
+    }
+    return cf.length - 1;
+  })();
+  const periodInc = view === 'monthly' ? cf[lastDataIdx].income : cf.reduce((s, m) => s + m.income, 0);
   const periodInv = DATA.INVEST_TOTAL * scale;
 
   const groups = useMemo(() => {
@@ -85,7 +92,7 @@ export function CashFlowScreen({ go, currency, household }) {
     <div className="page rise">
       <div className="page-h">
         <h1>Cash Flow & Expenses</h1>
-        <span className="sub">{view === 'monthly' ? FMT.fmtMonthYear(DATA.TODAY) : 'Trailing 12 months'} · {household === 'household' ? 'Household' : DATA.USERS[household].name}</span>
+        <span className="sub">{view === 'monthly' ? `${cf[lastDataIdx]?.label ?? ''} ${cf[lastDataIdx]?.year ?? ''}` : 'Trailing 12 months'} · {household === 'household' ? 'Household' : DATA.USERS[household].name}</span>
         <div className="tabs" style={{ marginLeft: 'auto' }}>
           <button className={view === 'monthly' ? 'on' : ''} onClick={() => setView('monthly')}>Monthly</button>
           <button className={view === 'yearly' ? 'on' : ''} onClick={() => setView('yearly')}>Yearly</button>

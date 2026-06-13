@@ -54,11 +54,19 @@ export async function importFile(
   return res.json()
 }
 
+export interface PathImportResult {
+  files_processed: number
+  rows_imported: number
+  rows_skipped: number
+  rows_uncategorized: number
+  errors: string[]
+}
+
 export async function importFromPath(
   path: string,
   accountId: number,
   userId: number,
-): Promise<ImportLogRead> {
+): Promise<PathImportResult> {
   const fd = new FormData()
   fd.append('path', path)
   fd.append('account_id', String(accountId))
