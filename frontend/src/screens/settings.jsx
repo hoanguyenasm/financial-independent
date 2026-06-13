@@ -63,7 +63,7 @@ function ImportTab() {
           <div className={'dropzone' + (over ? ' over' : '')}
             onDragOver={e => { e.preventDefault(); setOver(true); }}
             onDragLeave={() => setOver(false)}
-            onDrop={e => { e.preventDefault(); setOver(false); handleFile(e.dataTransfer.files[0]); }}>
+            onDrop={e => { e.preventDefault(); setOver(false); handleFile(e.dataTransfer.files?.[0]); }}>
             <span style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
               <Icon n="upload" s={26} c="var(--accent)" />
             </span>
