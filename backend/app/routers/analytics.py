@@ -3,12 +3,13 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 from datetime import date
 from app.database import get_db
-from app.models import Transaction
+from app.models import Asset, Transaction
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 INCOME_TYPES = {"income", "dividend", "interest", "investment_sell"}
 EXPENSE_TYPES = {"expense", "fee"}
+PASSIVE_TYPES = {"dividend", "interest"}
 
 
 def _months_ago(d: date, months: int) -> date:
@@ -41,3 +42,27 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
         }
         for month, vals in sorted(buckets.items())
     ]
+
+
+@router.get("/summary")
+def summary(db: Session = Depends(get_db)):
+    net_worth = sum(
+        float(a.current_value) * float(a.ownership_pct) / 100.0
+        for a in db.query(Asset).all()
+        if a.current_value is not None
+    )
+
+    cutoff = _months_ago(date.today(), 11)
+    txs = db.query(Transaction).filter(Transaction.date >= cutoff).all()
+    income = sum(_base_amount(t) for t in txs if t.type in INCOME_TYPES)
+    expenses = sum(abs(_base_amount(t)) for t in txs if t.type in EXPENSE_TYPES)
+    passive = sum(_base_amount(t) for t in txs if t.type in PASSIVE_TYPES)
+    needs_review = db.query(Transaction).filter(Transaction.needs_review == True).count()  # noqa: E712
+
+    return {
+        "net_worth": round(net_worth, 2),
+        "passive_income_monthly": round(passive / 12, 2),
+        "monthly_expenses": round(expenses / 12, 2),
+        "savings_rate": round((income - expenses) / income, 4) if income > 0 else 0.0,
+        "needs_review": needs_review,
+    }

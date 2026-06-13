@@ -50,3 +50,39 @@ def test_cashflow_monthly_empty(client):
     response = client.get("/analytics/cashflow-monthly")
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_summary(client):
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    # assets: 1000 * 100% + 200000 * 50% = 101000 net worth
+    client.post("/assets", json={
+        "account_id": account_id, "symbol_or_name": "VWCE", "asset_type": "etf",
+        "currency": "EUR", "current_value": 1000.0,
+    })
+    client.post("/assets", json={
+        "account_id": account_id, "symbol_or_name": "Apartment", "asset_type": "real_estate",
+        "currency": "EUR", "current_value": 200000.0, "ownership_pct": 50.0,
+    })
+    _tx(client, user_id, account_id, f"{m}-01", 6000.0, "income", "salary")
+    _tx(client, user_id, account_id, f"{m}-02", 240.0, "dividend")
+    _tx(client, user_id, account_id, f"{m}-03", -2400.0, "expense", "mortgage")
+    _tx(client, user_id, account_id, f"{m}-04", -10.0, "expense", needs_review=True)
+
+    response = client.get("/analytics/summary")
+    assert response.status_code == 200
+    s = response.json()
+    assert s["net_worth"] == 101000.0
+    # trailing-12-month averages: income (6000+240)/12, expenses 2410/12
+    assert s["monthly_expenses"] == round(2410 / 12, 2)
+    assert s["passive_income_monthly"] == round(240 / 12, 2)
+    assert s["savings_rate"] == round((6240 - 2410) / 6240, 4)
+    assert s["needs_review"] == 1
+
+
+def test_summary_empty_db(client):
+    s = client.get("/analytics/summary").json()
+    assert s == {
+        "net_worth": 0.0, "passive_income_monthly": 0.0,
+        "monthly_expenses": 0.0, "savings_rate": 0.0, "needs_review": 0,
+    }
