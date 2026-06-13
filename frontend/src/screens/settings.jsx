@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, deleteCategoryRule, importFile, getImportLogs } from '../lib/api.ts';
+import { getSettings, updateSettings, deleteCategoryRule, importFile, getImportLogs, getAccounts } from '../lib/api.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'import');
@@ -27,12 +27,42 @@ export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
 }
 
 /* ---------------- IMPORT ---------------- */
+function typeToClass(type) {
+  if (type === 'crypto') return 'crypto';
+  if (type === 'realestate' || type === 'real_estate') return 'realestate';
+  if (type === 'gold') return 'gold';
+  if (type === 'brokerage' || type === 'investment' || type === 'stocks') return 'stocks';
+  return 'bank';
+}
+
 function ImportTab() {
   const [phase, setPhase] = useState('idle');     // idle | uploading | result
   const [over, setOver] = useState(false);
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState(DATA.IMPORTS);
   const [, showToast] = useToast();
+
+  const defaultAccounts = DATA.ACCOUNTS.filter(a => a.is_active);
+  const [accounts, setAccounts] = useState(defaultAccounts);
+  const [selectedAccountId, setSelectedAccountId] = useState(
+    defaultAccounts.length > 0 ? defaultAccounts[0].id : null
+  );
+
+  useEffect(() => {
+    getAccounts(true).then(data => {
+      if (data.length > 0) {
+        const adapted = data.map(a => ({
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          cls: typeToClass(a.type),
+          is_active: a.is_active,
+        }));
+        setAccounts(adapted);
+        setSelectedAccountId(adapted[0].id);
+      }
+    }).catch(() => {});
+  }, []);
 
   const loadHistory = () =>
     getImportLogs().then(setHistory).catch(() => {});
@@ -43,7 +73,7 @@ function ImportTab() {
     if (!file) return;
     setPhase('uploading');
     try {
-      const log = await importFile(file, 1, 1);
+      const log = await importFile(file, selectedAccountId ?? 1, 1);
       setResult(log);
       setPhase('result');
       showToast(`Imported ${log.rows_imported} transactions · ${log.rows_uncategorized} need review`, 'check');
@@ -117,13 +147,21 @@ function ImportTab() {
         <div className="card tight">
           <label className="fld">Target account</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {DATA.ACCOUNTS.filter(a => a.is_active).map(a => (
+            {accounts.map(a => (
               <button key={a.id} className="dd-item"
-                style={{ border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                onClick={() => setSelectedAccountId(a.id)}
+                style={{
+                  border: `1px solid ${a.id === selectedAccountId ? 'var(--accent)' : 'var(--border)'}`,
+                  background: a.id === selectedAccountId ? 'var(--accent-soft)' : 'var(--surface-2)',
+                }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: `var(--c-${a.cls})` }} />
                 <span style={{ flex: 1 }}>{a.name}</span>
+                {a.id === selectedAccountId && <Icon n="check" s={14} c="var(--accent)" />}
               </button>
             ))}
+            {accounts.length === 0 && (
+              <div className="fx" style={{ padding: '8px 4px' }}>No accounts found. Create one first.</div>
+            )}
           </div>
         </div>
       </div>
