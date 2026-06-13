@@ -10,6 +10,8 @@
 
 **Tech Stack:** React 19, Vite 8, TypeScript 6 (`allowJs` for ported `.jsx`), prototype CSS.
 
+**Status: COMPLETE (2026-06-13).** All tasks executed. Verified: `npm run build` green, backend `pytest` 33/33 green, all 5 screens render in the Vite dev server with zero console errors, and `/settings` GET/PATCH round-trips from the frontend origin against the running backend. Bugs found in the prototype and fixed during the port: `FMT.compactUSD` didn't exist (CashBars tooltip), `Money` hardcoded USD as base, ImportTab defaulted to a nonexistent `vcb` account id.
+
 ---
 
 ## File Map
