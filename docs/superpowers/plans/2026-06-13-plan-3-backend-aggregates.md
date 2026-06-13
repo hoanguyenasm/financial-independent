@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.12, FastAPI, SQLAlchemy 2.0, pytest.
 
+**Status: COMPLETE (2026-06-13).** All tasks executed TDD-style. Full suite: 47 passed. New endpoints: `/category-rules` (POST/GET/DELETE), `/fx-rates` (PUT upsert, GET list, GET /latest), `/analytics/cashflow-monthly`, `/analytics/summary`.
+
 ---
 
 ## Task 1: Category rules router
