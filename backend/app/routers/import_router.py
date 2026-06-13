@@ -29,10 +29,13 @@ async def import_file(
         raise HTTPException(status_code=422, detail=f"Unsupported file type: .{ext}. Use CSV or PDF.")
 
     raw = await file.read()
-    if ext == "csv":
-        rows = parse_csv(io.StringIO(raw.decode("utf-8-sig")))
-    else:
-        rows = parse_pdf(io.BytesIO(raw))
+    try:
+        if ext == "csv":
+            rows = parse_csv(io.StringIO(raw.decode("utf-8-sig")))
+        else:
+            rows = parse_pdf(io.BytesIO(raw))
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Failed to parse file: {exc}") from exc
 
     log = ImportService.run(
         db=db,
