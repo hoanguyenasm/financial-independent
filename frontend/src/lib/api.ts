@@ -58,3 +58,24 @@ export const getImportLogs = (accountId?: number) => {
   const q = accountId != null ? `?account_id=${accountId}` : ''
   return api<ImportLogRead[]>(`/import/logs${q}`)
 }
+
+export interface AnalyticsSummary {
+  net_worth: number
+  passive_income_monthly: number
+  monthly_expenses: number
+  savings_rate: number          // fraction 0–1
+  needs_review: number
+}
+
+export interface CashflowMonth {
+  month: string   // "YYYY-MM"
+  income: number
+  expense: number
+  net: number
+}
+
+export const getAnalyticsSummary = () =>
+  api<AnalyticsSummary>('/analytics/summary')
+
+export const getCashflowMonthly = (months = 12) =>
+  api<CashflowMonth[]>(`/analytics/cashflow-monthly?months=${months}`)
