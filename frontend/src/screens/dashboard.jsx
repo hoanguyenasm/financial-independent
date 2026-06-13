@@ -2,14 +2,31 @@
    Screen — FIRE Dashboard (progress-led, direction A)
    ============================================================ */
 /* eslint-disable */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { DATA, FMT, FIRE } from '../data.js';
 import { Icon, Ring, Spark, AreaChart } from '../ui.jsx';
+import { getAnalyticsSummary } from '../lib/api.ts';
 
 export function DashboardScreen({ go, currency, household }) {
   const S = DATA.SUMMARY;
   const M = (v, dec) => FMT.display(currency, v, dec);
   const MC = (v) => FMT.displayCompact(currency, v);
+
+  const [needsReview, setNeedsReview] = useState(S.needs_review);
+  const [passiveIncome, setPassiveIncome] = useState(S.passive_income);
+  const [monthlyExpenses, setMonthlyExpenses] = useState(S.monthly_expenses);
+  const [savingsRatePct, setSavingsRatePct] = useState(S.savings_rate_month);
+
+  useEffect(() => {
+    getAnalyticsSummary()
+      .then(s => {
+        setNeedsReview(s.needs_review);
+        setPassiveIncome(s.passive_income_monthly);
+        setMonthlyExpenses(s.monthly_expenses);
+        setSavingsRatePct(Math.round(s.savings_rate * 100));
+      })
+      .catch(() => {});
+  }, []);
 
   const baseN = useMemo(() => FIRE.monthsToFI(S.base_monthly_savings), []);
   const [extra, setExtra] = useState(0);
@@ -20,7 +37,7 @@ export function DashboardScreen({ go, currency, household }) {
   const saved = baseN - n;
   const pct = S.net_worth / S.fi_target;
 
-  const coverage = S.passive_income / S.monthly_expenses;
+  const coverage = passiveIncome / (monthlyExpenses || 1);
   const savingsSeries = [40, 52, 46, 60, 50, 55, 48, 63, 54, 58, 51, 74];
 
   return (
@@ -85,8 +102,8 @@ export function DashboardScreen({ go, currency, household }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 14 }}>
             <Ring pct={coverage} size={88} color="var(--pos)" label={Math.round(coverage * 100) + '%'} />
             <div>
-              <div className="num" style={{ fontSize: 19, fontWeight: 800 }}>{M(S.passive_income)}<span style={{ fontSize: 12, color: 'var(--text-3)' }}>/mo</span></div>
-              <div className="kpi-sub">of {M(S.monthly_expenses)} expenses</div>
+              <div className="num" style={{ fontSize: 19, fontWeight: 800 }}>{M(passiveIncome)}<span style={{ fontSize: 12, color: 'var(--text-3)' }}>/mo</span></div>
+              <div className="kpi-sub">of {M(monthlyExpenses)} expenses</div>
               <div className="tag pos sm" style={{ marginTop: 8 }}>+4% vs last yr</div>
             </div>
           </div>
@@ -95,7 +112,7 @@ export function DashboardScreen({ go, currency, household }) {
         <div className="card tight">
           <div className="kpi-label">Savings rate</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 12 }}>
-            <div className="num pos-c" style={{ fontSize: 32, fontWeight: 800 }}>{S.savings_rate_month}%</div>
+            <div className="num pos-c" style={{ fontSize: 32, fontWeight: 800 }}>{savingsRatePct}%</div>
             <div className="kpi-sub">this month</div>
           </div>
           <div className="mini-bars" style={{ marginTop: 12 }}>
@@ -118,7 +135,7 @@ export function DashboardScreen({ go, currency, household }) {
             <div className="kpi-label warn-c">Needs review</div>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warn)', boxShadow: '0 0 9px var(--warn)' }} />
           </div>
-          <div className="num warn-c" style={{ fontSize: 44, fontWeight: 800, marginTop: 10 }}>{S.needs_review}</div>
+          <div className="num warn-c" style={{ fontSize: 44, fontWeight: 800, marginTop: 10 }}>{needsReview}</div>
           <div className="kpi-sub">uncategorized transactions</div>
           <button className="btn ghost" style={{ marginTop: 14, width: '100%', justifyContent: 'center' }}>Review now <Icon n="arrowR" s={13} /></button>
         </div>
