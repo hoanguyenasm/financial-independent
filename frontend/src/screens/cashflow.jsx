@@ -4,9 +4,10 @@
    Investment overview, grand total, drill-down.
    ============================================================ */
 /* eslint-disable */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Dropdown, DDItem, Donut, CashBars } from '../ui.jsx';
+import { getCashflowMonthly } from '../lib/api.ts';
 
 export function CashFlowScreen({ go, currency, household }) {
   const M = (v, dec) => FMT.display(currency, v, dec);
@@ -17,7 +18,21 @@ export function CashFlowScreen({ go, currency, household }) {
   const [sort, setSort] = useState('amount');       // amount | name
   const [expanded, setExpanded] = useState(() => new Set([DATA.EXPENSE_GROUPS[0].group]));
 
-  const cf = DATA.CASHFLOW;
+  const [cf, setCf] = useState(DATA.CASHFLOW);
+
+  useEffect(() => {
+    getCashflowMonthly(12)
+      .then(data => {
+        if (data.length > 0) {
+          setCf(data.map(m => {
+            const [y, mo] = m.month.split('-').map(Number);
+            return { label: DATA.MONTHS[mo - 1], year: y, income: m.income, expense: m.expense, net: m.net };
+          }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const scale = view === 'yearly' ? 12 : 1;
   const periodInc = (view === 'monthly' ? cf[cf.length - 1].income : cf.reduce((s, m) => s + m.income, 0));
   const periodExp = DATA.EXP_TOTAL * scale;
