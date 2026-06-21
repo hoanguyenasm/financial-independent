@@ -36,6 +36,10 @@ _DIVIDEND_KW = {
     "kapitalmassnah", "cash dividend",
 }
 
+# Module constants for categorization logic
+_INCOME_CATEGORIES = {"salary", "rental", "airbnb", "interest", "dividend", "income"}
+_HOUSEHOLD_NAMES = ("duc hoa nguyen", "bao ngoc pham", "ngoc pham")
+
 
 def _infer_type(description: str, amount: float) -> str:
     n = _normalize(description)
@@ -55,16 +59,24 @@ class ImportService:
     @staticmethod
     def _categorize(description: str, rules: list[CategoryRule], amount: float = 0.0, tx_type: str = "") -> tuple[str, bool]:
         lower_desc = description.lower()
+        credit = amount > 0
+        # 1. explicit rules, direction-aware (rules win over the transfer type)
         for rule in rules:
             if rule.pattern.lower() in lower_desc:
-                return rule.category, False
-        if tx_type in ("interest",):
+                if credit == (rule.category in _INCOME_CATEGORIES):
+                    return rule.category, False
+        # 2. household self-transfers are internal
+        if any(n in lower_desc for n in _HOUSEHOLD_NAMES):
+            return "transfer", False
+        # 3-4. type-based inference
+        if tx_type == "interest":
             return "interest", False
-        if tx_type in ("dividend",):
+        if tx_type == "dividend":
             return "dividend", False
         if tx_type in ("transfer", "investment_buy", "investment_sell"):
             return tx_type, False
-        if amount >= 0:
+        # 5. fallback
+        if credit:
             return "income", False
         return "uncategorized", True
 

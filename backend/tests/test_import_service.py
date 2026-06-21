@@ -5,6 +5,35 @@ from app.services.import_service import ImportService, _infer_type
 from app.models import Transaction, CategoryRule, ImportLog
 
 
+def _rules():
+    return [
+        CategoryRule(pattern="Ropex", category="salary"),
+        CategoryRule(pattern="Miete", category="rental"),
+        CategoryRule(pattern="airbnb", category="airbnb"),
+        CategoryRule(pattern="KAUFLAND", category="groceries"),
+        CategoryRule(pattern="Kaufland", category="salary"),
+        CategoryRule(pattern="Vodafone", category="utilities"),
+    ]
+
+
+def test_categorize_direction_aware_and_rule_before_transfer():
+    cz = ImportService._categorize
+    # income arriving as Übertrag must categorize as rental, not transfer
+    assert cz("Übertrag / Überweisung Auftraggeber: X Buchungstext: Miete", _rules(), 400.0, "transfer") == ("rental", False)
+    # airbnb credit
+    assert cz("AIRBNB PAYMENTS LUXEMBOURG", _rules(), 67.5, "transfer") == ("airbnb", False)
+    # Ropex credit = salary; Ropex debit = not salary (review)
+    assert cz("Auftraggeber: Ropex GmbH", _rules(), 3000.0, "income") == ("salary", False)
+    assert cz("Auftraggeber: Ropex GmbH lunchlist", _rules(), -22.85, "expense") == ("uncategorized", True)
+    # Kaufland credit = salary, KAUFLAND debit = groceries
+    assert cz("Kaufland Lohn", _rules(), 2500.0, "income") == ("salary", False)
+    assert cz("KAUFLAND HEILBRONN", _rules(), -12.84, "expense") == ("groceries", False)
+    # household self-transfer = transfer, not income
+    assert cz("Gutschrift Bao Ngoc Pham", _rules(), 38000.0, "income") == ("transfer", False)
+    # plain expense with no rule = review
+    assert cz("UNKNOWN SHOP", _rules(), -9.0, "expense") == ("uncategorized", True)
+
+
 def test_uebertrag_typed_as_transfer_not_dividend():
     # "Übertrag" (German for transfer) normalizes to "uebertrag", which contains
     # the substring "ertrag" — it must NOT be misclassified as a dividend.
