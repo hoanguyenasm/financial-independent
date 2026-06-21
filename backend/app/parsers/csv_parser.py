@@ -14,7 +14,7 @@ def decode_csv_bytes(raw: bytes) -> str:
 
 
 _DATE_FORMATS = ["%d.%m.%Y", "%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%d.%m.%y"]
-_DATE_HEADERS = {"date", "datum", "buchungsdatum", "buchung", "valutadatum", "valuta"}
+_DATE_HEADERS = {"date", "datum", "buchungsdatum", "buchungstag", "buchung", "valutadatum", "valuta"}
 _DESC_HEADERS = {"description", "verwendungszweck", "buchungstext", "payee", "empfänger", "memo", "auftraggeber"}
 _AMT_HEADERS  = {"amount", "betrag", "umsatz", "buchungsbetrag"}
 _CUR_HEADERS  = {"currency", "währung", "wahrung"}
