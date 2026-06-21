@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
+from datetime import date
 
 
 class AccountCreate(BaseModel):
@@ -28,5 +29,7 @@ class AccountRead(BaseModel):
     currency: str
     institution: Optional[str]
     is_active: bool
+    balance: Optional[float] = None
+    balance_as_of: Optional[date] = None
 
     model_config = {"from_attributes": True}
