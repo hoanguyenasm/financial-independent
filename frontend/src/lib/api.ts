@@ -197,6 +197,23 @@ export const getAssets = (accountId?: number) => {
   return api<AssetRead[]>(`/assets${q}`)
 }
 
+export interface AssetWrite {
+  account_id: number
+  symbol_or_name: string
+  asset_type: string
+  current_value: number
+  ownership_pct: number
+  currency: string
+  expected_monthly_income?: number | null
+  quantity?: number
+}
+
+export const createAsset = (payload: AssetWrite) =>
+  api<AssetRead>('/assets', { method: 'POST', body: JSON.stringify(payload) })
+
+export const updateAsset = (id: number, payload: Partial<AssetWrite>) =>
+  api<AssetRead>(`/assets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+
 export interface CategoryExpense {
   category: string
   total_base: number

@@ -42,3 +42,11 @@ def test_delete_account(client):
     created = client.post("/accounts", json={"name": "To Delete", "type": "checking", "currency": "USD"}).json()
     response = client.delete(f"/accounts/{created['id']}")
     assert response.status_code == 204
+
+
+def test_account_read_exposes_balance_fields(client):
+    r = client.post("/accounts", json={"name": "Giro", "type": "checking", "currency": "EUR"})
+    assert r.status_code == 201
+    body = r.json()
+    assert "balance" in body and body["balance"] is None
+    assert "balance_as_of" in body and body["balance_as_of"] is None

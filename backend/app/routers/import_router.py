@@ -1,6 +1,7 @@
 import hashlib
 import io
 import os
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -8,15 +9,22 @@ from app.database import get_db
 from app.parsers import parse_csv, parse_pdf
 from app.parsers.csv_parser import decode_csv_bytes
 from app.parsers.pdf_parser import _extract_text_lines
+from app.parsers.balance_extractor import extract_balance
 from app.services.import_service import ImportService
 from app.services.account_router import detect_owner, detect_bank, route_account
 from app.services.category_seed import seed_category_rules
-from app.models import ImportLog
+from app.models import ImportLog, Account
 from app.schemas import ImportLogRead, PathImportResult, TreeImportResult
 
 router = APIRouter(prefix="/import", tags=["import"])
 
 _ALLOWED_EXTENSIONS = {"csv", "pdf"}
+
+
+def _newer(as_of: date | None, stored: date | None) -> bool:
+    if as_of is None:
+        return False
+    return stored is None or as_of > stored
 
 
 def _extension(filename: str) -> str:
@@ -162,9 +170,18 @@ async def import_from_tree(path: str = Form(...), user_id: int = Form(1), db: Se
             total_imp += log.rows_imported
             total_skip += log.rows_skipped
             total_uncat += log.rows_uncategorized
+            bal = extract_balance(bank, lines)
+            as_of = max((r.date for r in rows), default=None)
+            if bal is not None and account_id is not None:
+                acct = db.get(Account, account_id)
+                if acct is not None and _newer(as_of, acct.balance_as_of):
+                    acct.balance = bal
+                    acct.balance_as_of = as_of
+                    db.commit()
             summary.append({"file": fname, "bank": bank, "owner": owner, "account_id": account_id,
                             "status": log.status, "imported": log.rows_imported,
-                            "skipped": log.rows_skipped, "uncategorized": log.rows_uncategorized})
+                            "skipped": log.rows_skipped, "uncategorized": log.rows_uncategorized,
+                            "balance": bal})
         except Exception as exc:
             errors.append(f"{fname}: {exc}")
     return TreeImportResult(files_processed=len(files), rows_imported=total_imp,

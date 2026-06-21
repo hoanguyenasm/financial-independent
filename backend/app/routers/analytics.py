@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from collections import defaultdict
 from datetime import date
 from app.database import get_db
-from app.models import Asset, Transaction, FIGoal
+from app.models import Asset, Transaction, FIGoal, Account
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -73,11 +73,17 @@ def expense_by_category(months: int = Query(default=12, ge=1, le=60), db: Sessio
 
 @router.get("/summary")
 def summary(db: Session = Depends(get_db)):
-    net_worth = sum(
+    accounts = db.query(Account).all()
+    deposits = sum(float(a.balance) for a in accounts
+                   if a.balance is not None and a.type != "credit_card")
+    liabilities = sum(abs(float(a.balance)) for a in accounts
+                      if a.balance is not None and a.type == "credit_card")
+    assets_val = sum(
         float(a.current_value) * float(a.ownership_pct) / 100.0
         for a in db.query(Asset).all()
         if a.current_value is not None
     )
+    net_worth = deposits - liabilities + assets_val
 
     cutoff = _months_ago(date.today(), 11)
     txs = db.query(Transaction).filter(Transaction.date >= cutoff).all()

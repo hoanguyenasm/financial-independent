@@ -158,3 +158,13 @@ def test_recategorize_all_applies_new_rules(db):
     assert changed == 1
     tx = db.query(Transaction).first()
     assert tx.category == "groceries" and tx.needs_review is False
+
+
+def test_amex_settlement_debit_is_transfer():
+    from app.services.category_seed import SEED_RULES
+    rules = [CategoryRule(pattern=p, category=c) for p, c in SEED_RULES]
+    # Comdirect debit paying off the card must be a transfer, not an expense
+    cat, review = ImportService._categorize(
+        "Auftraggeber: AMERICAN EXPRESS EUROPE S.A. (Germany branch)", rules, -2361.29, "expense")
+    assert cat == "transfer"
+    assert review is False
