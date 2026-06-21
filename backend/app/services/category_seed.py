@@ -32,6 +32,9 @@ SEED_RULES: list[tuple[str, str]] = [
     ("Bahn", "transport"), ("Aral", "transport"), ("Shell", "transport"),
     # utilities
     ("Yello", "utilities"), ("Telekom", "utilities"), ("Vodafone", "utilities"),
+    # mortgage (expense — must NOT be in _INCOME_CATEGORIES)
+    ("Commerzbank", "mortgage"),
+    ("Tilgung", "mortgage"),
 ]
 
 

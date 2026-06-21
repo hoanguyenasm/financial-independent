@@ -130,6 +130,23 @@ def test_duplicate_file_hash_skips_entire_file(db):
     assert log2.rows_imported == 0
 
 
+def test_negative_zinsen_is_not_interest_income():
+    # mortgage payment containing "Zinsen" but negative must NOT be typed interest
+    assert _infer_type("Auftraggeber: Commerzbank AG Tilgung 1997,84 Zinsen 180,53", -2178.37) != "interest"
+
+
+def test_positive_zinsen_still_interest():
+    assert _infer_type("Erhaltene Zinsen", 28.55) == "interest"
+
+
+def test_negative_ertrag_not_dividend():
+    assert _infer_type("Ausschüttung Ertrag reversal", -5.0) != "dividend"
+
+
+def test_positive_dividend_still_dividend():
+    assert _infer_type("Ertrag Cash Dividend for ISIN US123", 5.13) == "dividend"
+
+
 def test_recategorize_all_applies_new_rules(db):
     from app.models import Transaction, CategoryRule
     db.add(Transaction(account_id=1, user_id=1, date=date(2026, 4, 2), amount=-12.84,

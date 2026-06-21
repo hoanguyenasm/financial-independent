@@ -43,10 +43,13 @@ _HOUSEHOLD_NAMES = ("duc hoa nguyen", "bao ngoc pham", "ngoc pham")
 
 def _infer_type(description: str, amount: float) -> str:
     n = _normalize(description)
-    if any(k in n for k in _INTEREST_KW):
-        return "interest"
-    if any(k in n for k in _DIVIDEND_KW) or re.search(r"\bertrag\b", n):
-        return "dividend"
+    # Interest and dividend are only income (credits). A negative amount containing
+    # "Zinsen" / "Ertrag" etc. is interest PAID or a reversal — not passive income.
+    if amount > 0:
+        if any(k in n for k in _INTEREST_KW):
+            return "interest"
+        if any(k in n for k in _DIVIDEND_KW) or re.search(r"\bertrag\b", n):
+            return "dividend"
     if any(k in n for k in _INVESTMENT_BUY_KW):
         return "investment_buy" if amount < 0 else "investment_sell"
     if any(k in n for k in _TRANSFER_KW):
