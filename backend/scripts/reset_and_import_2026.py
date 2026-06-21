@@ -13,7 +13,10 @@ from app.services.account_router import detect_owner, detect_bank, route_account
 TREE = r"G:\My Drive\12_Budget_2026"
 
 db = SessionLocal()
-db.query(Transaction).delete(); db.query(ImportLog).delete(); db.commit()
+db.query(Transaction).delete(); db.query(ImportLog).delete()
+for a in db.query(Account).all():
+    a.balance = None; a.balance_as_of = None
+db.commit()
 print("seeded rules:", seed_category_rules(db))
 
 files = [os.path.join(r, f) for r, _, fs in os.walk(TREE) for f in sorted(fs)
