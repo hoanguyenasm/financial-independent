@@ -80,19 +80,43 @@ parses, and runs `ImportService`. Returns a per-file summary
 (file, bank, account, imported/skipped/uncategorized, reason-if-skipped). The existing
 `/import/from-path` and `/import` endpoints are unchanged.
 
-### 6. Seed category rules + recategorize
-- Insert a starter set of `CategoryRule`s for merchants present in the 2026 data:
-  - groceries: KAUFLAND, LIDL, REWE, EDEKA, ALDI, PENNY, NETTO
-  - dining: restaurant/cafe names, Buonissimo, McDonald, Lieferando
-  - shopping: AMAZON, PAYPAL, Zalando, Pflanzen-Koelle
-  - subscriptions: Prime, iTunes/APPLE, Gympass, Netflix, Spotify
-  - health: Kinderwunsch, Aerzte/Arzt, Apotheke
-  - transport: DB/Bahn, fuel, Aral/Shell
-  - utilities: Yello Strom, Telekom, Vodafone
-  - income: Gehalt/Lohn/salary
-- Apply via type-based fallbacks already in `_categorize` for transfer/investment/fee.
-- Provide a one-off recategorize routine that re-runs `_categorize` over existing
-  transactions so seeded rules take effect without re-import.
+### 6. Seed category rules + recategorize (direction-aware)
+
+`_categorize` becomes **direction-aware**: positive amounts (credits) are matched against
+**income** rules first; negative amounts (debits) against **expense** rules. This resolves
+the `Kaufland` collision — a Kaufland credit is salary, a KAUFLAND debit is groceries.
+
+**Household names** (treated as internal transfers, never income): `Duc Hoa Nguyen` (Hoa),
+`Bao Ngoc Pham` / `Ngoc Pham` (Norah). A credit whose description contains a household
+name → `transfer` (e.g. the 38,000 "Gutschrift Duc Hoa Nguyen" is internal, not income).
+
+**Income categories (match credits only):**
+- **salary:** `Ropex` (Hoa), `Kaufland` (Norah, credit direction only)
+- **rental:** a credit from a person name **not** in the household list (the tenant
+  credits: Yarob Abbas, Valentin Josu, Kadir Dora, ANNA ANGIOLA, …). Implemented as a
+  fallback: positive amount, not a household name, not matched by another income rule →
+  rental. Specific known tenant names are also seeded as explicit rules.
+- **airbnb:** `airbnb`
+- **interest:** `Erhaltene Zinsen`, `Zinsen` (also covered by `_infer_type`)
+- **dividend:** `Ertrag` (whole word), `Ausschüttung`, `Dividend` (via `_infer_type`)
+
+**Expense categories (match debits only):**
+- groceries: KAUFLAND, LIDL, REWE, EDEKA, ALDI, PENNY, NETTO
+- dining: Buonissimo, McDonald, Lieferando, restaurant/cafe
+- shopping: AMAZON, PAYPAL, Zalando, Pflanzen-Koelle
+- subscriptions: Prime, iTunes/APPLE, Gympass, Netflix, Spotify
+- health: Kinderwunsch, Aerzte/Arzt, Apotheke
+- transport: DB/Bahn, Aral/Shell, fuel
+- utilities: Yello Strom, Telekom, Vodafone
+
+- Type-based fallbacks already in `_categorize` cover transfer/investment/fee.
+- A one-off recategorize routine re-runs `_categorize` over existing transactions so
+  seeded rules take effect without re-import.
+
+### Scalable Cash vs Broker — decision
+Keep both Norah accounts separate (Cash = interest/savings bucket, Broker = invested
+assets/dividends). Route each statement by content: securities activity
+(`Kauf/Verkauf eines Finanzinstruments`, ISIN) → Broker; otherwise → Cash.
 
 ## Data flow
 
@@ -118,8 +142,9 @@ from-tree(path)
 - PDFium fallback: a parse of a Comdirect file yields > 0 rows.
 - Account router: (bank, owner) → expected account; Scalable Cash vs Broker; unknown → skip.
 - File-hash guard: importing the same bytes twice imports rows once, second is skipped.
-- Category rules: a KAUFLAND expense → groceries, not needs_review; recategorize updates
-  existing rows.
+- Category rules: a KAUFLAND **debit** → groceries; a Kaufland **credit** → salary
+  (direction-aware); `Ropex` credit → salary; tenant-name credit → rental; household-name
+  credit (`Bao Ngoc Pham`) → transfer, not rental; recategorize updates existing rows.
 - Full suite stays green (currently 82 + new tests).
 
 ## Verification (real data)
