@@ -32,6 +32,8 @@ def test_categorize_direction_aware_and_rule_before_transfer():
     assert cz("Gutschrift Bao Ngoc Pham", _rules(), 38000.0, "income") == ("transfer", False)
     # plain expense with no rule = review
     assert cz("UNKNOWN SHOP", _rules(), -9.0, "expense") == ("uncategorized", True)
+    # zero-amount row is not a credit -> flagged for review
+    assert cz("Fee reversal nets to zero", _rules(), 0.0, "") == ("uncategorized", True)
 
 
 def test_uebertrag_typed_as_transfer_not_dividend():
