@@ -3,6 +3,7 @@ from sqlalchemy import and_, or_
 from app.parsers.models import ParsedRow
 from app.models import Transaction, CategoryRule, ImportLog
 
+import re
 import unicodedata
 
 
@@ -17,7 +18,7 @@ def _normalize(s: str) -> str:
 
 # Keywords (already normalized via _normalize) indicating transaction types
 _TRANSFER_KW = {
-    "ueberweisung", "umbuchung", "transfer", "zahlungseingang", "zahlungsausgang",
+    "ueberweisung", "umbuchung", "uebertrag", "transfer", "zahlungseingang", "zahlungsausgang",
     "incoming transfer", "outgoing transfer",
     "von eur flexible", "an eur flexible",   # Revolut money market
     "umgetauscht", "waehrungswechsel",        # FX conversion
@@ -28,8 +29,10 @@ _INVESTMENT_BUY_KW = {
     "sparplan", "handel",
 }
 _INTEREST_KW = {"zinsen", "interest payment", "erhaltene zinsen", "zinsertrag"}
+# "ertrag" is matched as a whole word (see _infer_type) rather than a substring,
+# because "uebertrag" (transfer) contains it and must not be read as a dividend.
 _DIVIDEND_KW = {
-    "dividende", "dividend", "ertrag", "ausschuettung",
+    "dividende", "dividend", "ausschuettung",
     "kapitalmassnah", "cash dividend",
 }
 
@@ -38,7 +41,7 @@ def _infer_type(description: str, amount: float) -> str:
     n = _normalize(description)
     if any(k in n for k in _INTEREST_KW):
         return "interest"
-    if any(k in n for k in _DIVIDEND_KW):
+    if any(k in n for k in _DIVIDEND_KW) or re.search(r"\bertrag\b", n):
         return "dividend"
     if any(k in n for k in _INVESTMENT_BUY_KW):
         return "investment_buy" if amount < 0 else "investment_sell"

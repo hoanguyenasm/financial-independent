@@ -1,8 +1,23 @@
 from datetime import date
 import pytest
 from app.parsers.models import ParsedRow
-from app.services.import_service import ImportService
+from app.services.import_service import ImportService, _infer_type
 from app.models import Transaction, CategoryRule, ImportLog
+
+
+def test_uebertrag_typed_as_transfer_not_dividend():
+    # "Übertrag" (German for transfer) normalizes to "uebertrag", which contains
+    # the substring "ertrag" — it must NOT be misclassified as a dividend.
+    assert _infer_type("Übertrag/ DucHoaNguyen End-to-End-Ref.:", -90500.0) == "transfer"
+
+
+def test_uebertrag_sondertilgung_typed_as_transfer():
+    assert _infer_type("Übertrag/ DucHoaNguyenundBao Sondertilgung", -22850.0) == "transfer"
+
+
+def test_genuine_dividend_still_typed_as_dividend():
+    assert _infer_type("Ertrag Cash Dividend for ISIN US67066G1040", 12.50) == "dividend"
+    assert _infer_type("Kapitalmaßnahme Ausschüttungen", 8.30) == "dividend"
 
 
 @pytest.fixture
