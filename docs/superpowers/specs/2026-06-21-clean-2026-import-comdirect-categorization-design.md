@@ -38,24 +38,26 @@ screens; an auto-learning categorizer (seed rules only).
 
 ## Components
 
-### 1. PDFium text-extraction fallback (`app/parsers/pdf_parser.py`)
-`_extract_text_lines` tries pdfplumber first; if it yields no non-empty lines, fall back
-to `pypdfium2`. Existing parsers (TR, Revolut, Scalable, AmEx, ING) keep using
-pdfplumber output unchanged — zero regression risk. The fallback unlocks Comdirect (and
-is available to any future text-empty statement).
+### 1 + 2. Comdirect via CSV export (decided: PDF is image-of-table-like; CSV is reliable)
+The Comdirect Finanzreport PDF is a multi-column table whose amounts do not align
+row-by-row in extracted text; reliable parsing would need coordinate reconstruction.
+Instead, Comdirect is imported from the bank's **CSV export** (`umsaetze_*.csv`), which
+the existing `parse_csv` nearly handles. Three small adapter fixes in
+`app/parsers/csv_parser.py` (verified against a real export, 296 rows):
+- **Encoding:** comdirect CSV is `cp1252`/Latin-1, not UTF-8. Decode helper tries
+  `utf-8-sig`, falls back to `cp1252` on `UnicodeDecodeError`. Applied in the CSV decode
+  path of `import_router` / from-tree too.
+- **Preamble:** 4 metadata lines precede the header. `parse_csv` scans for the header
+  row (first row containing a known date-header token) instead of assuming row 0.
+- **Amount header:** `Umsatz in EUR` must match the amount column. `_find_col` matches a
+  header if a candidate is an exact match **or a substring** of the header
+  (`"umsatz" in "umsatz in eur"`).
 
-### 2. Comdirect Finanzreport parser (`_parse_comdirect`)
-- **Detector** `_looks_like_comdirect`: text contains "comdirect" and "Finanzreport".
-- **Format:** multi-line records under the "Umsätze Girokonto" section. Fields per
-  record: `Buchungstag` (date, DD.MM.YYYY) → transaction date; `Vorgang` (e.g.
-  "Lastschrift / Belastung", "Übertrag", "Gutschrift") + `Auftraggeber/Empfänger` +
-  `Buchungstext` → description; amount in the **Ausgang** column = negative, **Eingang**
-  column = positive.
-- **Approach:** state machine that opens a record on a `Buchungstag` date line,
-  accumulates description lines, and closes on the amount line. Ignore the
-  "Alter Saldo" / "Neuer Saldo" / "Kontoübersicht" summary lines.
-- Returns `ParsedRow(date, description, amount, currency="EUR")`, consistent with the
-  other parsers.
+The `Buchungstext` column already embeds `Auftraggeber: <name> Buchungstext: <text>`,
+giving payee + memo in one description field. Rental/Airbnb/salary signals confirmed in
+real data: `Miete` (rent), `AIRBNB PAYMENTS` (airbnb), `Ropex` (salary credit; Ropex
+also appears as small canteen debits — handled by direction-aware categorization).
+PDFium fallback and a Comdirect PDF parser are **out of scope** (CSV supersedes them).
 
 ### 3. Bank + owner account router (`app/services/account_router.py`)
 - **Owner** from the file path: a path segment equal to `Hoa` or `Norah`.
@@ -82,9 +84,20 @@ parses, and runs `ImportService`. Returns a per-file summary
 
 ### 6. Seed category rules + recategorize (direction-aware)
 
-`_categorize` becomes **direction-aware**: positive amounts (credits) are matched against
-**income** rules first; negative amounts (debits) against **expense** rules. This resolves
-the `Kaufland` collision — a Kaufland credit is salary, a KAUFLAND debit is groceries.
+`_categorize` becomes **direction-aware**, and **DB rules are matched before the
+type-based transfer fallback**. This ordering is critical: Comdirect income (salary,
+rent, Airbnb) arrives as `Übertrag / Überweisung`, which `_infer_type` types as
+`transfer` — so a rule match must win over the transfer type, or all such income is lost.
+
+**Order in `_categorize`:**
+1. DB rules, direction-aware (credit → income-category rule; debit → expense-category rule)
+2. Household-name (`Duc Hoa Nguyen`, `Bao Ngoc Pham`, `Ngoc Pham`) → `transfer`
+3. `tx_type` interest/dividend → those
+4. `tx_type` transfer/investment_buy/investment_sell → those
+5. credit → `income`; debit → `uncategorized` (needs review)
+
+Direction-awareness resolves collisions: a Kaufland/Ropex **credit** is salary, a
+KAUFLAND/Ropex **debit** is groceries/canteen.
 
 **Household names** (treated as internal transfers, never income): `Duc Hoa Nguyen` (Hoa),
 `Bao Ngoc Pham` / `Ngoc Pham` (Norah). A credit whose description contains a household
@@ -92,10 +105,10 @@ name → `transfer` (e.g. the 38,000 "Gutschrift Duc Hoa Nguyen" is internal, no
 
 **Income categories (match credits only):**
 - **salary:** `Ropex` (Hoa), `Kaufland` (Norah, credit direction only)
-- **rental:** a credit from a person name **not** in the household list (the tenant
-  credits: Yarob Abbas, Valentin Josu, Kadir Dora, ANNA ANGIOLA, …). Implemented as a
-  fallback: positive amount, not a household name, not matched by another income rule →
-  rental. Specific known tenant names are also seeded as explicit rules.
+- **rental:** primary signal is the keyword **`Miete`** (rent) in the Comdirect
+  `Buchungstext` (reliable, confirmed 37 hits). Also seed known tenant names
+  (Yarob Abbas, Valentin Josu, Kadir Dora, ANNA ANGIOLA) for credits arriving without
+  "Miete". Household-name credits are excluded (step 2 → transfer).
 - **airbnb:** `airbnb`
 - **interest:** `Erhaltene Zinsen`, `Zinsen` (also covered by `_infer_type`)
 - **dividend:** `Ertrag` (whole word), `Ausschüttung`, `Dividend` (via `_infer_type`)
@@ -137,10 +150,10 @@ from-tree(path)
 - A parser exception on one file never aborts the tree import.
 
 ## Testing (TDD)
-- `_parse_comdirect`: unit tests on representative line sequences (Lastschrift expense,
-  Gutschrift income, Übertrag transfer; skip summary lines).
-- PDFium fallback: a parse of a Comdirect file yields > 0 rows.
-- Account router: (bank, owner) → expected account; Scalable Cash vs Broker; unknown → skip.
+- CSV adapter: a comdirect-style CSV (cp1252 bytes, 4-line preamble, `Umsatz in EUR`
+  header) parses to the expected rows with correct umlauts and signed amounts.
+- Account router: (bank, owner) → expected account; comdirect CSV → Comdirect account;
+  Scalable Cash vs Broker; unknown → skip.
 - File-hash guard: importing the same bytes twice imports rows once, second is skipped.
 - Category rules: a KAUFLAND **debit** → groceries; a Kaufland **credit** → salary
   (direction-aware); `Ropex` credit → salary; tenant-name credit → rental; household-name
