@@ -29,8 +29,15 @@ def extract_balance(bank: str, text_lines: list[str]) -> float | None:
         m = re.search(r"Neuer Saldo\s+" + _AMOUNT, text)
         return _parse_amount_eu(m.group(1)) if m else None
     if bank == "amex":
-        m = re.search(r"Neuer Saldo\s+" + _AMOUNT, text) or re.search(r"Zu zahlender Betrag\s+" + _AMOUNT, text)
-        return _parse_amount_eu(m.group(1)) if m else None
+        for pat in (
+            r"Saldo des laufenden Monats f[üu]r.*?" + _AMOUNT + r"\s*$",
+            r"Neuer Saldo\s+" + _AMOUNT,
+            r"Zu zahlender Betrag\s+" + _AMOUNT,
+        ):
+            m = re.search(pat, text, re.MULTILINE)
+            if m:
+                return _parse_amount_eu(m.group(1))
+        return None
     if bank == "trade_republic":
         return _last_match_balance(text_lines, _TR_AMT_PAT, 2)
     if bank == "revolut":

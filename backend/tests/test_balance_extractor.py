@@ -20,6 +20,15 @@ def test_amex_neuer_saldo_amount_owed():
     assert extract_balance("amex", lines) == 295.36
 
 
+def test_amex_saldo_laufenden_monats_real_format():
+    lines = [
+        "Saldo der letzten Gutschriften Neue Belastungen Neuer Saldo Zu zahlender",
+        "Saldo des laufenden Monats fürHERRN DUC HOA NGUYEN",
+        "Saldo des laufenden Monats fürHERRN DUC HOA NGUYEN 295,36",
+    ]
+    assert extract_balance("amex", lines) == 295.36
+
+
 def test_trade_republic_last_running_balance():
     lines = ["12 Apr Zinsen 59,58€ 35.131,57€", "13 Apr Kauf 100,00€ 35.031,57€"]
     assert extract_balance("trade_republic", lines) == 35031.57
