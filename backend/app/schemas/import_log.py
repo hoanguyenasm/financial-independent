@@ -22,3 +22,12 @@ class PathImportResult(BaseModel):
     rows_skipped: int
     rows_uncategorized: int
     errors: list[str]
+
+
+class TreeImportResult(BaseModel):
+    files_processed: int
+    rows_imported: int
+    rows_skipped: int
+    rows_uncategorized: int
+    files: list[dict]
+    errors: list[str]

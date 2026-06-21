@@ -6,9 +6,14 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from app.database import get_db
 from app.parsers import parse_csv, parse_pdf
+from app.parsers.csv_parser import decode_csv_bytes
+from app.parsers.pdf_parser import _extract_text_lines
 from app.services.import_service import ImportService
+from app.services.account_router import detect_owner, detect_bank, route_account
+from app.services.category_seed import seed_category_rules
 from app.models import ImportLog
-from app.schemas import ImportLogRead, PathImportResult
+from app.schemas import ImportLogRead, PathImportResult, TreeImportResult
+import io as _io
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -107,6 +112,64 @@ async def import_from_path(
         rows_uncategorized=total_uncategorized,
         errors=errors,
     )
+
+
+@router.post("/seed-rules")
+def seed_rules(db: Session = Depends(get_db)):
+    return {"inserted": seed_category_rules(db)}
+
+
+@router.post("/recategorize")
+def recategorize(db: Session = Depends(get_db)):
+    return {"updated": ImportService.recategorize_all(db)}
+
+
+@router.post("/from-tree", response_model=TreeImportResult, status_code=201)
+async def import_from_tree(path: str = Form(...), user_id: int = Form(1), db: Session = Depends(get_db)):
+    path = path.strip()
+    if not os.path.isdir(path):
+        raise HTTPException(status_code=422, detail=f"Not a directory: {path}")
+    files: list[str] = []
+    for root, _, fnames in os.walk(path):
+        for fname in sorted(fnames):
+            if _extension(fname) in _ALLOWED_EXTENSIONS:
+                files.append(os.path.join(root, fname))
+
+    total_imp = total_skip = total_uncat = 0
+    summary: list[dict] = []
+    errors: list[str] = []
+    for fpath in files:
+        ext = _extension(fpath)
+        fname = os.path.basename(fpath)
+        try:
+            raw = open(fpath, "rb").read()
+            fhash = hashlib.sha256(raw).hexdigest()
+            if ext == "csv":
+                text = decode_csv_bytes(raw)
+                lines = text.splitlines()
+                rows = parse_csv(_io.StringIO(text))
+            else:
+                lines = _extract_text_lines(_io.BytesIO(raw))
+                rows = parse_pdf(_io.BytesIO(raw))
+            owner = detect_owner(fpath)
+            bank = detect_bank(fname, lines)
+            account_id = route_account(db, bank, owner, lines)
+            if account_id is None:
+                summary.append({"file": fname, "bank": bank, "owner": owner, "status": "no_account"})
+                continue
+            log = ImportService.run(db=db, rows=rows, account_id=account_id, user_id=user_id,
+                                    filename=fname, source_type=ext, file_hash=fhash)
+            total_imp += log.rows_imported
+            total_skip += log.rows_skipped
+            total_uncat += log.rows_uncategorized
+            summary.append({"file": fname, "bank": bank, "owner": owner, "account_id": account_id,
+                            "status": log.status, "imported": log.rows_imported,
+                            "skipped": log.rows_skipped, "uncategorized": log.rows_uncategorized})
+        except Exception as exc:
+            errors.append(f"{fname}: {exc}")
+    return TreeImportResult(files_processed=len(files), rows_imported=total_imp,
+                            rows_skipped=total_skip, rows_uncategorized=total_uncat,
+                            files=summary, errors=errors)
 
 
 @router.get("/logs", response_model=list[ImportLogRead])

@@ -1,4 +1,6 @@
 import io
+import os
+import tempfile
 import pytest
 
 
@@ -131,6 +133,52 @@ def test_list_import_logs_after_upload(client):
     logs = response.json()
     assert len(logs) == 1
     assert logs[0]["filename"] == "may.csv"
+
+
+def test_seed_rules(client):
+    response = client.post("/import/seed-rules")
+    assert response.status_code == 200
+    body = response.json()
+    assert "inserted" in body
+    assert body["inserted"] >= 0
+
+
+def test_recategorize_endpoint(client):
+    response = client.post("/import/recategorize")
+    assert response.status_code == 200
+    assert "updated" in response.json()
+
+
+def test_import_from_tree_no_account_match(client):
+    """Post a temp dir with one CSV; no account rows exist so expect no_account status."""
+    csv_content = (
+        "Buchungsdatum;Verwendungszweck;Betrag;Währung\n"
+        "01.05.2026;REWE Supermarkt;-42.80;EUR\n"
+    ).encode("utf-8")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Simulate an owner subfolder like the real tree
+        owner_dir = os.path.join(tmpdir, "Hoa")
+        os.makedirs(owner_dir)
+        csv_path = os.path.join(owner_dir, "umsaetze_may.csv")
+        with open(csv_path, "wb") as f:
+            f.write(csv_content)
+        response = client.post(
+            "/import/from-tree",
+            data={"path": tmpdir, "user_id": "1"},
+        )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["files_processed"] >= 1
+    # No matching account in test DB → status no_account
+    assert any(f["status"] == "no_account" for f in body["files"])
+
+
+def test_import_from_tree_invalid_path(client):
+    response = client.post(
+        "/import/from-tree",
+        data={"path": "/nonexistent/path/xyz", "user_id": "1"},
+    )
+    assert response.status_code == 422
 
 
 def test_list_import_logs_filtered_by_account(client):

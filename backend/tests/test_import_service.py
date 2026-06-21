@@ -128,3 +128,16 @@ def test_duplicate_file_hash_skips_entire_file(db):
                              filename="a-copy.csv", source_type="csv", file_hash="abc123")
     assert log2.status == "duplicate_file"
     assert log2.rows_imported == 0
+
+
+def test_recategorize_all_applies_new_rules(db):
+    from app.models import Transaction, CategoryRule
+    db.add(Transaction(account_id=1, user_id=1, date=date(2026, 4, 2), amount=-12.84,
+                        currency="EUR", description="KAUFLAND HEILBRONN", category="uncategorized",
+                        type="expense", needs_review=True, source="import"))
+    db.add(CategoryRule(pattern="KAUFLAND", category="groceries"))
+    db.commit()
+    changed = ImportService.recategorize_all(db)
+    assert changed == 1
+    tx = db.query(Transaction).first()
+    assert tx.category == "groceries" and tx.needs_review is False

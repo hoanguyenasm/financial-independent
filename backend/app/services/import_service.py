@@ -168,3 +168,16 @@ class ImportService:
         db.commit()
         db.refresh(log)
         return log
+
+    @classmethod
+    def recategorize_all(cls, db: Session) -> int:
+        rules = db.query(CategoryRule).all()
+        changed = 0
+        for tx in db.query(Transaction).all():
+            category, needs_review = cls._categorize(tx.description, rules, float(tx.amount), tx.type)
+            if tx.category != category or bool(tx.needs_review) != needs_review:
+                tx.category = category
+                tx.needs_review = needs_review
+                changed += 1
+        db.commit()
+        return changed
