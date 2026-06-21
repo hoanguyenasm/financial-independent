@@ -10,6 +10,7 @@ import { CashFlowScreen } from './screens/cashflow.jsx'
 import { AccountsScreen } from './screens/accounts.jsx'
 import { TransactionsScreen } from './screens/transactions.jsx'
 import { SettingsScreen } from './screens/settings.jsx'
+import { getSettings } from './lib/api'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { err: string | null }> {
   state = { err: null }
@@ -60,6 +61,8 @@ export default function App() {
   }
   useEffect(() => lset('household', household), [household])
   useEffect(() => lset('currency', currency), [currency])
+  // Backend base_currency is the source of truth; sync it on startup.
+  useEffect(() => { getSettings().then(s => { if (s?.base_currency) setCurrency(s.base_currency) }).catch(() => {}) }, [])
 
   const common = { go, currency, household, setCurrency }
   let body
