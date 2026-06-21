@@ -114,9 +114,13 @@ class ImportService:
         file_hash: str | None = None,
     ) -> ImportLog:
         if cls.file_already_imported(db, file_hash, account_id):
-            return ImportLog(account_id=account_id, filename=filename, source_type=source_type,
-                             status="duplicate_file", rows_imported=0, rows_skipped=0,
-                             rows_uncategorized=0, file_hash=file_hash)
+            log = ImportLog(account_id=account_id, filename=filename, source_type=source_type,
+                            status="duplicate_file", rows_imported=0, rows_skipped=0,
+                            rows_uncategorized=0, file_hash=file_hash)
+            db.add(log)
+            db.commit()
+            db.refresh(log)
+            return log
 
         rules = db.query(CategoryRule).filter(
             or_(CategoryRule.account_id == account_id, CategoryRule.account_id.is_(None))
