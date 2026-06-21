@@ -35,6 +35,9 @@ SEED_RULES: list[tuple[str, str]] = [
     # mortgage (expense — must NOT be in _INCOME_CATEGORIES)
     ("Commerzbank", "mortgage"),
     ("Tilgung", "mortgage"),
+    # credit-card settlement pulled from the bank account = internal transfer, not expense
+    ("American Express", "transfer"),
+    ("AMERICAN EXPRESS", "transfer"),
 ]
 
 
