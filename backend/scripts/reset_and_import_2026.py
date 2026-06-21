@@ -1,12 +1,13 @@
 """One-off: wipe transactions + import logs (keep accounts), seed rules, import 2026 tree, recategorize."""
 from app.database import SessionLocal
-from app.models import Transaction, ImportLog
+from app.models import Transaction, ImportLog, Account
 from app.services.category_seed import seed_category_rules
 from app.services.import_service import ImportService
 import io, os, hashlib
 from app.parsers import parse_pdf, parse_csv
 from app.parsers.csv_parser import decode_csv_bytes
 from app.parsers.pdf_parser import _extract_text_lines
+from app.parsers.balance_extractor import extract_balance
 from app.services.account_router import detect_owner, detect_bank, route_account
 
 TREE = r"G:\My Drive\12_Budget_2026"
@@ -32,5 +33,12 @@ for fp in files:
                             filename=os.path.basename(fp), source_type=ext, file_hash=fhash)
     print(f"{os.path.basename(fp)[:40]:40} bank={bank} owner={owner} acc={acc} "
           f"imp={log.rows_imported} skip={log.rows_skipped} status={log.status}")
+    bal = extract_balance(bank, lines)
+    as_of = max((r.date for r in rows), default=None)
+    if bal is not None and acc is not None:
+        a = db.get(Account, acc)
+        if a is not None and (a.balance_as_of is None or (as_of is not None and as_of > a.balance_as_of)):
+            a.balance = bal; a.balance_as_of = as_of; db.commit()
+            print(f"   balance[{acc}] = {bal} as of {as_of}")
 print("recategorized:", ImportService.recategorize_all(db))
 db.close()

@@ -2,6 +2,15 @@ import io
 import os
 import tempfile
 import pytest
+from app.routers.import_router import _newer
+from datetime import date
+
+
+def test_newer_balance_gate():
+    assert _newer(date(2026, 5, 1), None) is True               # no prior -> update
+    assert _newer(date(2026, 5, 1), date(2026, 4, 1)) is True   # newer -> update
+    assert _newer(date(2026, 4, 1), date(2026, 5, 1)) is False  # older -> keep
+    assert _newer(None, date(2026, 4, 1)) is False              # no as_of -> keep
 
 
 CSV_CONTENT = (
