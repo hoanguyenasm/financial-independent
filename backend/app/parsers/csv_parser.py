@@ -4,8 +4,17 @@ from datetime import date, datetime
 from typing import TextIO
 from .models import ParsedRow
 
+
+def decode_csv_bytes(raw: bytes) -> str:
+    """comdirect CSV is cp1252; most others are UTF-8. Try UTF-8 (BOM) then cp1252."""
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252")
+
+
 _DATE_FORMATS = ["%d.%m.%Y", "%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%d.%m.%y"]
-_DATE_HEADERS = {"date", "datum", "buchungsdatum", "buchung", "valutadatum", "valuta"}
+_DATE_HEADERS = {"date", "datum", "buchungsdatum", "buchungstag", "buchung", "valutadatum", "valuta"}
 _DESC_HEADERS = {"description", "verwendungszweck", "buchungstext", "payee", "empfänger", "memo", "auftraggeber"}
 _AMT_HEADERS  = {"amount", "betrag", "umsatz", "buchungsbetrag"}
 _CUR_HEADERS  = {"currency", "währung", "wahrung"}
@@ -53,6 +62,9 @@ def _find_col(headers: list[str], candidates: set[str]) -> int | None:
     for i, h in enumerate(headers):
         if h in candidates:
             return i
+    for i, h in enumerate(headers):
+        if any(c in h for c in candidates):
+            return i
     return None
 
 
@@ -61,11 +73,17 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
     if isinstance(content, bytes):
         content = content.decode("utf-8-sig")
     delimiter = _sniff_delimiter(content[:1024])
-    reader = csv.reader(io.StringIO(content), delimiter=delimiter)
-    raw_headers = next(reader, None)
-    if not raw_headers:
+
+    all_rows = list(csv.reader(io.StringIO(content), delimiter=delimiter))
+    header_idx = None
+    for i, r in enumerate(all_rows):
+        cells = [c.strip().strip('"').lower() for c in r]
+        if _find_col(cells, _DATE_HEADERS) is not None and _find_col(cells, _DESC_HEADERS) is not None:
+            header_idx = i
+            break
+    if header_idx is None:
         return []
-    headers = [h.strip().strip('"').lower() for h in raw_headers]
+    headers = [h.strip().strip('"').lower() for h in all_rows[header_idx]]
 
     date_col  = _find_col(headers, _DATE_HEADERS)
     desc_col  = _find_col(headers, _DESC_HEADERS)
@@ -80,7 +98,7 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
     has_debit_or_credit = debit_col is not None or credit_col is not None
 
     rows: list[ParsedRow] = []
-    for raw in reader:
+    for raw in all_rows[header_idx + 1:]:
         if not any(c.strip() for c in raw):
             continue
         def cell(i): return raw[i].strip().strip('"') if i is not None and i < len(raw) else ""

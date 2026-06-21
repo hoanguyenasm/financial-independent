@@ -389,3 +389,17 @@ def parse_pdf(file: BinaryIO, default_currency: str = "EUR") -> list[ParsedRow]:
         return _parse_ing(lines, default_currency)
 
     return []
+
+
+def detect_bank_from_lines(lines: list[str]) -> str | None:
+    if _looks_like_trade_republic(lines):
+        return "trade_republic"
+    if _looks_like_revolut(lines):
+        return "revolut"
+    if _looks_like_scalable(lines):
+        return "scalable"
+    if _looks_like_amex(lines):
+        return "amex"
+    if _looks_like_ing(lines):
+        return "ing"
+    return None

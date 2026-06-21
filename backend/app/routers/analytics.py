@@ -27,6 +27,8 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
     txs = db.query(Transaction).filter(Transaction.date >= cutoff).all()
     buckets: dict[str, dict[str, float]] = defaultdict(lambda: {"income": 0.0, "expense": 0.0})
     for tx in txs:
+        if tx.category == "transfer":  # internal movements are not income or expense
+            continue
         key = tx.date.strftime("%Y-%m")
         amount = _base_amount(tx)
         if tx.type in INCOME_TYPES:
@@ -54,7 +56,8 @@ def expense_by_category(months: int = Query(default=12, ge=1, le=60), db: Sessio
     cutoff = _months_ago(date.today(), months - 1)
     txs = db.query(Transaction).filter(
         Transaction.date >= cutoff,
-        Transaction.type.in_(EXPENSE_TYPES)
+        Transaction.type.in_(EXPENSE_TYPES),
+        Transaction.category != "transfer",  # exclude internal movements
     ).all()
     totals: dict[str, float] = defaultdict(float)
     counts: dict[str, int] = defaultdict(int)
@@ -78,8 +81,9 @@ def summary(db: Session = Depends(get_db)):
 
     cutoff = _months_ago(date.today(), 11)
     txs = db.query(Transaction).filter(Transaction.date >= cutoff).all()
-    income = sum(_base_amount(t) for t in txs if t.type in INCOME_TYPES)
-    expenses = sum(abs(_base_amount(t)) for t in txs if t.type in EXPENSE_TYPES)
+    # internal movements (category "transfer") are neither income nor expense
+    income = sum(_base_amount(t) for t in txs if t.type in INCOME_TYPES and t.category != "transfer")
+    expenses = sum(abs(_base_amount(t)) for t in txs if t.type in EXPENSE_TYPES and t.category != "transfer")
     passive = sum(_base_amount(t) for t in txs if t.type in PASSIVE_TYPES)
     needs_review = db.query(Transaction).filter(Transaction.needs_review == True).count()  # noqa: E712
 

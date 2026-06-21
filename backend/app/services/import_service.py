@@ -36,13 +36,20 @@ _DIVIDEND_KW = {
     "kapitalmassnah", "cash dividend",
 }
 
+# Module constants for categorization logic
+_INCOME_CATEGORIES = {"salary", "rental", "airbnb", "interest", "dividend", "income"}
+_HOUSEHOLD_NAMES = ("duc hoa nguyen", "bao ngoc pham", "ngoc pham")
+
 
 def _infer_type(description: str, amount: float) -> str:
     n = _normalize(description)
-    if any(k in n for k in _INTEREST_KW):
-        return "interest"
-    if any(k in n for k in _DIVIDEND_KW) or re.search(r"\bertrag\b", n):
-        return "dividend"
+    # Interest and dividend are only income (credits). A negative amount containing
+    # "Zinsen" / "Ertrag" etc. is interest PAID or a reversal — not passive income.
+    if amount > 0:
+        if any(k in n for k in _INTEREST_KW):
+            return "interest"
+        if any(k in n for k in _DIVIDEND_KW) or re.search(r"\bertrag\b", n):
+            return "dividend"
     if any(k in n for k in _INVESTMENT_BUY_KW):
         return "investment_buy" if amount < 0 else "investment_sell"
     if any(k in n for k in _TRANSFER_KW):
@@ -55,16 +62,24 @@ class ImportService:
     @staticmethod
     def _categorize(description: str, rules: list[CategoryRule], amount: float = 0.0, tx_type: str = "") -> tuple[str, bool]:
         lower_desc = description.lower()
+        credit = amount > 0
+        # 1. explicit rules, direction-aware (rules win over the transfer type)
         for rule in rules:
             if rule.pattern.lower() in lower_desc:
-                return rule.category, False
-        if tx_type in ("interest",):
+                if credit == (rule.category in _INCOME_CATEGORIES):
+                    return rule.category, False
+        # 2. household self-transfers are internal
+        if any(n in lower_desc for n in _HOUSEHOLD_NAMES):
+            return "transfer", False
+        # 3-4. type-based inference
+        if tx_type == "interest":
             return "interest", False
-        if tx_type in ("dividend",):
+        if tx_type == "dividend":
             return "dividend", False
         if tx_type in ("transfer", "investment_buy", "investment_sell"):
             return tx_type, False
-        if amount >= 0:
+        # 5. fallback
+        if credit:
             return "income", False
         return "uncategorized", True
 
@@ -79,6 +94,17 @@ class ImportService:
             )
         ).first() is not None
 
+    @staticmethod
+    def file_already_imported(db: Session, file_hash: str | None, account_id: int | None = None) -> bool:
+        if not file_hash:
+            return False
+        q = db.query(ImportLog).filter(
+            ImportLog.file_hash == file_hash, ImportLog.status == "done"
+        )
+        if account_id is not None:
+            q = q.filter(ImportLog.account_id == account_id)
+        return q.first() is not None
+
     @classmethod
     def run(
         cls,
@@ -88,7 +114,17 @@ class ImportService:
         user_id: int,
         filename: str,
         source_type: str,
+        file_hash: str | None = None,
     ) -> ImportLog:
+        if cls.file_already_imported(db, file_hash, account_id):
+            log = ImportLog(account_id=account_id, filename=filename, source_type=source_type,
+                            status="duplicate_file", rows_imported=0, rows_skipped=0,
+                            rows_uncategorized=0, file_hash=file_hash)
+            db.add(log)
+            db.commit()
+            db.refresh(log)
+            return log
+
         rules = db.query(CategoryRule).filter(
             or_(CategoryRule.account_id == account_id, CategoryRule.account_id.is_(None))
         ).all()
@@ -129,8 +165,22 @@ class ImportService:
             rows_imported=imported,
             rows_skipped=skipped,
             rows_uncategorized=uncategorized,
+            file_hash=file_hash,
         )
         db.add(log)
         db.commit()
         db.refresh(log)
         return log
+
+    @classmethod
+    def recategorize_all(cls, db: Session) -> int:
+        rules = db.query(CategoryRule).all()
+        changed = 0
+        for tx in db.query(Transaction).all():
+            category, needs_review = cls._categorize(tx.description, rules, float(tx.amount), tx.type)
+            if tx.category != category or bool(tx.needs_review) != needs_review:
+                tx.category = category
+                tx.needs_review = needs_review
+                changed += 1
+        db.commit()
+        return changed

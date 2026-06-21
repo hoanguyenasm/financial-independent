@@ -1,7 +1,7 @@
 import io
 from datetime import date
 import pytest
-from app.parsers.csv_parser import parse_csv
+from app.parsers.csv_parser import parse_csv, decode_csv_bytes
 from app.parsers.models import ParsedRow
 
 
@@ -71,3 +71,20 @@ def test_malformed_amount_row_is_skipped():
     bad = "date,description,amount\n2026-05-01,REWE,not-a-number\n"
     rows = parse_csv(io.StringIO(bad))
     assert rows == []
+
+
+def test_comdirect_csv_with_preamble_and_umsatz_header():
+    raw = (
+        '\n'
+        '"Umsätze Girokonto";"Zeitraum: 01.04.2026 - 30.04.2026";\n'
+        '"Neuer Kontostand";"1.375,84 EUR";\n'
+        '\n'
+        '"Buchungstag";"Wertstellung (Valuta)";"Vorgang";"Buchungstext";"Umsatz in EUR";\n'
+        '"17.04.2026";"17.04.2026";"Übertrag / Überweisung";"Auftraggeber: Abderrazak Aloui Buchungstext: Miete";"400,00";\n'
+        '"19.04.2026";"19.04.2026";"Lastschrift / Belastung";"Auftraggeber: Vodafone GmbH Buchungstext: Mobilfunk";"-29,99";\n'
+    ).encode('cp1252')
+    rows = parse_csv(io.StringIO(decode_csv_bytes(raw)))
+    assert len(rows) == 2
+    assert rows[0].amount == 400.00
+    assert 'Miete' in rows[0].description
+    assert rows[1].amount == -29.99
