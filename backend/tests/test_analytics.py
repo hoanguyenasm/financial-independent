@@ -145,3 +145,19 @@ def test_summary_includes_fi_target(client):
     client.post("/fi-goals", json=goal_payload)
     s = client.get("/analytics/summary").json()
     assert s["fi_target"] == 500000.0
+
+
+def test_net_worth_from_balances_and_assets(client, db):
+    from app.models import Account, Asset
+    db.add(Account(name="Giro", type="checking", currency="EUR", balance=1000.00))
+    db.add(Account(name="Broker", type="investment", currency="EUR", balance=500.00))
+    db.add(Account(name="AmEx", type="credit_card", currency="EUR", balance=300.00))  # owed
+    acc = Account(name="RE", type="checking", currency="EUR")
+    db.add(acc)
+    db.commit()
+    db.add(Asset(account_id=acc.id, symbol_or_name="Apartment", asset_type="realestate",
+                 quantity=1, current_value=236000.00, currency="EUR", ownership_pct=100.0))
+    db.commit()
+    # 1000 + 500 - 300 (credit card liability) + 236000 = 237200
+    nw = client.get("/analytics/summary").json()["net_worth"]
+    assert nw == 237200.0
