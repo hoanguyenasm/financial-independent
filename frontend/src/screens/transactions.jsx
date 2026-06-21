@@ -31,6 +31,16 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
   const [fCat, setFCat] = useState('all');
   const [fUser, setFUser] = useState('all');
   const [fRange, setFRange] = useState('90');
+  const last6Months = useMemo(() => {
+    const months = [];
+    const d = new Date(DATA.TODAY);
+    for (let i = 0; i < 6; i++) {
+      months.push({ value: `m:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) });
+      d.setMonth(d.getMonth() - 1);
+    }
+    return months;
+  }, []);
   const [needsReview, setNeedsReview] = useState(!!(initialFilter && initialFilter.needsReview));
   const [sel, setSel] = useState(() => new Set());
   const [page, setPage] = useState(0);
@@ -74,7 +84,9 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
   }, []);
 
   const filtered = useMemo(() => {
-    const cut = new Date(DATA.TODAY); cut.setDate(cut.getDate() - +fRange);
+    const cut = fRange !== 'all' && !fRange.startsWith('m:')
+      ? (new Date(DATA.TODAY), (() => { const d = new Date(DATA.TODAY); d.setDate(d.getDate() - +fRange); return d; })())
+      : null;
     return tx.filter(t => {
       if (needsReview && !t.needs_review) return false;
       if (fAcct !== 'all' && t.account_id !== fAcct) return false;
@@ -87,7 +99,10 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
         const resolvedHousehold = household === 'you' ? myUserId : partnerUserId;
         if (t.user_id !== resolvedHousehold) return false;
       }
-      if (fRange !== 'all' && t.d < cut) return false;
+      if (fRange.startsWith('m:')) {
+        const [y, mo] = fRange.slice(2).split('-').map(Number);
+        if (t.d.getFullYear() !== y || t.d.getMonth() + 1 !== mo) return false;
+      } else if (cut && t.d < cut) return false;
       if (q && !(t.desc.toLowerCase().includes(q.toLowerCase()) || (FMT.catName(t.category) || '').toLowerCase().includes(q.toLowerCase()))) return false;
       return true;
     });
@@ -156,9 +171,18 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
           <DDItem on={fUser === 'you'} onClick={() => setFUser('you')} dot="var(--you)">{DATA.USERS.you.name} (You)</DDItem>
           <DDItem on={fUser === 'partner'} onClick={() => setFUser('partner')} dot="var(--partner)">{DATA.USERS.partner.name} (Partner)</DDItem>
         </Dropdown>
-        <Dropdown label="Range" display={fRange === 'all' ? 'All time' : 'Last ' + fRange + 'd'}>
+        <Dropdown label="Period" display={
+          fRange === 'all' ? 'All time' :
+          fRange === '30' ? 'Last 30 days' :
+          fRange === '90' ? 'Last 90 days' :
+          fRange === '365' ? 'Last 12 months' :
+          (last6Months.find(m => m.value === fRange)?.label ?? 'Period')
+        }>
           {[['30', 'Last 30 days'], ['90', 'Last 90 days'], ['365', 'Last 12 months'], ['all', 'All time']].map(([v, l]) =>
             <DDItem key={v} on={fRange === v} onClick={() => setFRange(v)}>{l}</DDItem>)}
+          <div className="dd-sep" />
+          {last6Months.map(m =>
+            <DDItem key={m.value} on={fRange === m.value} onClick={() => setFRange(m.value)}>{m.label}</DDItem>)}
         </Dropdown>
         {activeFilters > 0 && <button className="dd-btn" onClick={() => { setFAcct('all'); setFCat('all'); setFUser('all'); setNeedsReview(false); }}><Icon n="x" s={13} />Clear</button>}
       </div>
