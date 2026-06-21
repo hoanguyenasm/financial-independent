@@ -1,3 +1,4 @@
+import hashlib
 import io
 import os
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -38,6 +39,7 @@ async def import_file(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Failed to parse file: {exc}") from exc
 
+    file_hash = hashlib.sha256(raw).hexdigest()
     log = ImportService.run(
         db=db,
         rows=rows,
@@ -45,6 +47,7 @@ async def import_file(
         user_id=user_id,
         filename=file.filename or "unknown",
         source_type=ext,
+        file_hash=file_hash,
     )
     return log
 
@@ -80,6 +83,7 @@ async def import_from_path(
         try:
             with open(fpath, "rb") as f:
                 raw = f.read()
+            file_hash = hashlib.sha256(raw).hexdigest()
             if ext == "csv":
                 rows = parse_csv(io.StringIO(raw.decode("utf-8-sig")))
             else:
@@ -88,6 +92,7 @@ async def import_from_path(
                 db=db, rows=rows,
                 account_id=account_id, user_id=user_id,
                 filename=os.path.basename(fpath), source_type=ext,
+                file_hash=file_hash,
             )
             total_imported += log.rows_imported
             total_skipped += log.rows_skipped

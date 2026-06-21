@@ -1,9 +1,10 @@
+from typing import Optional
 from pydantic import BaseModel
 from datetime import datetime
 
 
 class ImportLogRead(BaseModel):
-    id: int
+    id: Optional[int] = None
     account_id: int
     filename: str
     source_type: str
@@ -11,7 +12,7 @@ class ImportLogRead(BaseModel):
     rows_imported: int
     rows_skipped: int
     rows_uncategorized: int
-    imported_at: datetime
+    imported_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

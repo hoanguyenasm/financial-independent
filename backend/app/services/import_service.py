@@ -91,6 +91,17 @@ class ImportService:
             )
         ).first() is not None
 
+    @staticmethod
+    def file_already_imported(db: Session, file_hash: str | None, account_id: int | None = None) -> bool:
+        if not file_hash:
+            return False
+        q = db.query(ImportLog).filter(
+            ImportLog.file_hash == file_hash, ImportLog.status == "done"
+        )
+        if account_id is not None:
+            q = q.filter(ImportLog.account_id == account_id)
+        return q.first() is not None
+
     @classmethod
     def run(
         cls,
@@ -100,7 +111,13 @@ class ImportService:
         user_id: int,
         filename: str,
         source_type: str,
+        file_hash: str | None = None,
     ) -> ImportLog:
+        if cls.file_already_imported(db, file_hash, account_id):
+            return ImportLog(account_id=account_id, filename=filename, source_type=source_type,
+                             status="duplicate_file", rows_imported=0, rows_skipped=0,
+                             rows_uncategorized=0, file_hash=file_hash)
+
         rules = db.query(CategoryRule).filter(
             or_(CategoryRule.account_id == account_id, CategoryRule.account_id.is_(None))
         ).all()
@@ -141,6 +158,7 @@ class ImportService:
             rows_imported=imported,
             rows_skipped=skipped,
             rows_uncategorized=uncategorized,
+            file_hash=file_hash,
         )
         db.add(log)
         db.commit()

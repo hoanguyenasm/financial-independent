@@ -38,8 +38,9 @@ def test_import_duplicate_rows_skipped(client):
         files={"file": ("may.csv", io.BytesIO(file_bytes), "text/csv")},
     )
     body = response.json()
-    assert body["rows_skipped"] == 2
+    # Same file bytes → file-hash guard fires; entire file is skipped
     assert body["rows_imported"] == 0
+    assert body["status"] == "duplicate_file"
 
 
 def test_import_unsupported_format(client):

@@ -117,3 +117,14 @@ def test_amount_base_and_fx_rate_set(db):
     tx = db.query(Transaction).first()
     assert tx.currency == "USD"
     assert tx.amount_base is None
+
+
+def test_duplicate_file_hash_skips_entire_file(db):
+    rows = [ParsedRow(date=date(2026, 5, 1), description="REWE", amount=-10.0, currency="EUR")]
+    log1 = ImportService.run(db=db, rows=rows, account_id=1, user_id=1,
+                             filename="a.csv", source_type="csv", file_hash="abc123")
+    assert log1.rows_imported == 1
+    log2 = ImportService.run(db=db, rows=rows, account_id=1, user_id=1,
+                             filename="a-copy.csv", source_type="csv", file_hash="abc123")
+    assert log2.status == "duplicate_file"
+    assert log2.rows_imported == 0
