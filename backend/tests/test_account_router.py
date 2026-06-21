@@ -19,6 +19,7 @@ def test_detect_owner():
     assert detect_owner(r"G:\x\12_Budget_2026\April\Hoa\f.pdf") == "Hoa"
     assert detect_owner(r"G:\x\12_Budget_2026\Mai\Norah\f.pdf") == "Norah"
     assert detect_owner(r"G:\x\nope\f.pdf") is None
+    assert detect_owner(r"G:\x\Hoangs-stuff\f.pdf") is None
 
 
 def test_detect_bank_comdirect_csv():

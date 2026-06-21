@@ -1,4 +1,3 @@
-import os
 from sqlalchemy.orm import Session
 from app.models import Account
 from app.parsers.pdf_parser import detect_bank_from_lines
@@ -11,7 +10,7 @@ _INSTITUTION = {
 
 
 def detect_owner(path: str) -> str | None:
-    parts = [p for chunk in path.replace("\\", "/").split("/") for p in [chunk]]
+    parts = path.replace("\\", "/").split("/")
     for owner in _OWNERS:
         if owner in parts:
             return owner
@@ -44,4 +43,5 @@ def route_account(db: Session, bank: str | None, owner: str | None, text_lines: 
         for a in matches:
             if ("broker" in a.name.lower()) == is_broker:
                 return a.id
+        return matches[0].id
     return matches[0].id
