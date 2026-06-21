@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Donut, AreaChart } from '../ui.jsx';
-import { getAccounts, createAccount, getAssets, getNWSnapshots } from '../lib/api.ts';
+import { getAccounts, createAccount, getAssets, getNWSnapshots, createAsset, updateAsset } from '../lib/api.ts';
 
 function typeToClass(type) {
   if (type === 'crypto') return 'crypto';
@@ -23,6 +23,7 @@ export function AccountsScreen({ go, currency, household }) {
 
   const [liveAccounts, setLiveAccounts] = useState(DATA.ACCOUNTS);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [assetModal, setAssetModal] = useState(null);
   const [liveAssets, setLiveAssets] = useState(DATA.ASSETS);
   const [liveNW, setLiveNW] = useState([]);
 
@@ -211,9 +212,23 @@ export function AccountsScreen({ go, currency, household }) {
         />
       )}
 
+      {assetModal && (
+        <AssetModal
+          initial={assetModal}
+          accounts={liveAccounts}
+          onClose={() => setAssetModal(null)}
+          onSaved={() => { setAssetModal(null); getAssets().then(setLiveAssets).catch(() => {}); }}
+        />
+      )}
+
       {/* PER-ASSET PERFORMANCE */}
       <section className="card">
-        <div className="card-h"><div className="t"><b>Holdings</b> · performance</div></div>
+        <div className="card-h">
+          <div className="t"><b>Holdings</b> · performance</div>
+          <button className="btn ghost sm" style={{ marginLeft: 'auto' }} onClick={() => setAssetModal({})}>
+            <Icon n="plus" s={15} />Add asset
+          </button>
+        </div>
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table className="tbl">
             <thead>
@@ -258,6 +273,101 @@ export function AccountsScreen({ go, currency, household }) {
     </div>
   );
 }
+
+function AssetModal({ initial, accounts, onClose, onSaved }) {
+  const editing = !!(initial && initial.id);
+  const [name, setName] = useState(initial.symbol_or_name || '');
+  const [type, setType] = useState(initial.asset_type || 'stocks');
+  const [value, setValue] = useState(initial.current_value ?? '');
+  const [ownership, setOwnership] = useState(initial.ownership_pct ?? 100);
+  const [assetCurrency, setAssetCurrency] = useState(initial.currency || 'EUR');
+  const [accountId, setAccountId] = useState(initial.account_id || (accounts[0] && accounts[0].id) || 1);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    const v = parseFloat(value), o = parseFloat(ownership);
+    if (!name.trim()) { setError('Name is required'); return; }
+    if (Number.isNaN(v)) { setError('Value must be a number'); return; }
+    if (Number.isNaN(o) || o < 0 || o > 100) { setError('Ownership must be 0–100'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const payload = {
+        account_id: Number(accountId),
+        symbol_or_name: name.trim(),
+        asset_type: type,
+        current_value: v,
+        ownership_pct: o,
+        currency: assetCurrency.trim() || 'EUR',
+        quantity: 1,
+      };
+      const saved = editing ? await updateAsset(initial.id, payload) : await createAsset(payload);
+      onSaved(saved);
+    } catch (err) {
+      setError(err.message || 'Could not connect to server');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="row" style={{ gap: 11, marginBottom: 18 }}>
+          <span style={{ width: 38, height: 38, borderRadius: 11, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon n="wallet" s={20} c="var(--accent)" />
+          </span>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>{editing ? 'Edit asset' : 'New asset'}</div>
+            <div className="kpi-sub">A holding that counts toward net worth</div>
+          </div>
+          <button className="btn icon" style={{ marginLeft: 'auto', padding: 4, background: 'transparent', border: 0 }} onClick={onClose}>
+            <Icon n="x" s={16} />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label className="fld">Name *</label>
+            <input className="inp" placeholder="e.g. Stuttgart apartment" value={name} onChange={e => setName(e.target.value)} autoFocus />
+          </div>
+          <div>
+            <label className="fld">Type</label>
+            <select className="inp" value={type} onChange={e => setType(e.target.value)}>
+              {[['stocks', 'Stocks & ETFs'], ['realestate', 'Real estate'], ['crypto', 'Crypto'], ['gold', 'Gold'], ['cash', 'Cash'], ['other', 'Other']].map(([v, l]) =>
+                <option key={v} value={v}>{l}</option>
+              )}
+            </select>
+          </div>
+          <div>
+            <label className="fld">Current value</label>
+            <input className="inp mono" placeholder="236000" value={value} onChange={e => setValue(e.target.value)} />
+          </div>
+          <div>
+            <label className="fld">Ownership %</label>
+            <input className="inp mono" placeholder="100" value={ownership} onChange={e => setOwnership(e.target.value)} />
+          </div>
+          <div>
+            <label className="fld">Account</label>
+            <select className="inp" value={accountId} onChange={e => setAccountId(e.target.value)}>
+              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {error && <div style={{ marginTop: 12, fontSize: 13, color: 'var(--neg)', fontWeight: 600 }}>{error}</div>}
+
+        <div className="row" style={{ gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn primary" disabled={saving} onClick={handleSubmit}>
+            {saving ? 'Saving…' : editing ? 'Save asset' : 'Add asset'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function CreateAccountModal({ onClose, onCreated }) {
   const [name, setName] = useState('');
