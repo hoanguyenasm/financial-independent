@@ -114,6 +114,25 @@ def test_expense_by_category(client):
     assert "salary" not in cats
 
 
+def test_transfers_excluded_from_expenses(client):
+    # A household-name debit can be type="expense" but category="transfer" (internal
+    # movement). It must NOT count as an expense in either aggregation.
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    _tx(client, user_id, account_id, f"{m}-01", -300.0, "expense", "supermarket")
+    _tx(client, user_id, account_id, f"{m}-02", -5000.0, "expense", "transfer")  # internal
+    _tx(client, user_id, account_id, f"{m}-03", 4000.0, "income", "salary")
+
+    by_cat = {r["category"]: r for r in client.get("/analytics/expense-by-category?months=12").json()}
+    assert "transfer" not in by_cat
+    assert by_cat["supermarket"]["total_base"] == 300.0
+
+    summary = client.get("/analytics/summary").json()
+    # expenses = 300 (supermarket only), not 5300; savings = (4000-300)
+    assert summary["monthly_expenses"] == round(300.0 / 12, 2)
+    assert summary["base_monthly_savings"] == round((4000.0 - 300.0) / 12, 2)
+
+
 def test_summary_includes_fi_target(client):
     user = client.post("/users", json={"name": "Hoa", "email": "hoa@example.com"}).json()
     goal_payload = {

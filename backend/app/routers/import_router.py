@@ -13,7 +13,6 @@ from app.services.account_router import detect_owner, detect_bank, route_account
 from app.services.category_seed import seed_category_rules
 from app.models import ImportLog
 from app.schemas import ImportLogRead, PathImportResult, TreeImportResult
-import io as _io
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -142,15 +141,16 @@ async def import_from_tree(path: str = Form(...), user_id: int = Form(1), db: Se
         ext = _extension(fpath)
         fname = os.path.basename(fpath)
         try:
-            raw = open(fpath, "rb").read()
+            with open(fpath, "rb") as f:
+                raw = f.read()
             fhash = hashlib.sha256(raw).hexdigest()
             if ext == "csv":
                 text = decode_csv_bytes(raw)
                 lines = text.splitlines()
-                rows = parse_csv(_io.StringIO(text))
+                rows = parse_csv(io.StringIO(text))
             else:
-                lines = _extract_text_lines(_io.BytesIO(raw))
-                rows = parse_pdf(_io.BytesIO(raw))
+                lines = _extract_text_lines(io.BytesIO(raw))
+                rows = parse_pdf(io.BytesIO(raw))
             owner = detect_owner(fpath)
             bank = detect_bank(fname, lines)
             account_id = route_account(db, bank, owner, lines)
