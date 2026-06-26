@@ -141,7 +141,7 @@ function ImportTab() {
             <label className="fld" style={{ marginBottom: 8 }}>Import from path (file or folder)</label>
             <div className="row" style={{ gap: 8 }}>
               <input className="inp mono" style={{ flex: 1, fontSize: 12 }}
-                placeholder="G:\My Drive\12_Budget_2026\ING_Hoa  or  G:\...\statement.pdf"
+                placeholder={"G:\\My Drive\\12_Budget_2026\\ING_Hoa  or  G:\\...\\statement.pdf"}
                 value={pathInput}
                 onChange={e => { setPathInput(e.target.value); setError(''); setResult(null); }}
                 onKeyDown={e => e.key === 'Enter' && !uploading && handlePathImport()}

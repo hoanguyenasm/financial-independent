@@ -10,7 +10,6 @@ import { CashFlowScreen } from './screens/cashflow.jsx'
 import { AccountsScreen } from './screens/accounts.jsx'
 import { TransactionsScreen } from './screens/transactions.jsx'
 import { SettingsScreen } from './screens/settings.jsx'
-import { getSettings } from './lib/api'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { err: string | null }> {
   state = { err: null }
@@ -49,7 +48,7 @@ export default function App() {
   const [screen, setScreen] = useState(() => ls('screen', 'dashboard'))
   const [params, setParams] = useState<Params>({})
   const [household, setHousehold] = useState(() => ls('household', 'household'))
-  const [currency, setCurrency] = useState(() => ls('currency', 'EUR'))
+  const [currency, setCurrency] = useState('EUR')
   const [reviewCount, setReviewCount] = useState<number>(DATA.SUMMARY.needs_review)
   const [myUserId] = useState(() => Number(ls('my_user_id', '1')))
 
@@ -60,9 +59,6 @@ export default function App() {
     document.querySelector('.scroll')?.scrollTo(0, 0)
   }
   useEffect(() => lset('household', household), [household])
-  useEffect(() => lset('currency', currency), [currency])
-  // Backend base_currency is the source of truth; sync it on startup.
-  useEffect(() => { getSettings().then(s => { if (s?.base_currency) setCurrency(s.base_currency) }).catch(() => {}) }, [])
 
   const common = { go, currency, household, setCurrency }
   let body
