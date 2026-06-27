@@ -17,6 +17,23 @@ def detect_owner(path: str) -> str | None:
     return None
 
 
+# Account-holder names as printed inside statements, mapped to the owner tag.
+_OWNER_NAMES = {
+    "Hoa": ("duc hoa nguyen", "hoa nguyen"),
+    "Norah": ("bao ngoc pham", "ngoc pham", "norah"),
+}
+
+
+def detect_owner_from_text(text_lines: list[str]) -> str | None:
+    """Browser uploads have no folder path, so read the account holder from the
+    statement body (the name the bank prints on the statement)."""
+    blob = "\n".join(text_lines).lower()
+    for owner, names in _OWNER_NAMES.items():
+        if any(n in blob for n in names):
+            return owner
+    return None
+
+
 def detect_bank(filename: str, text_lines: list[str]) -> str | None:
     name = filename.lower()
     header = "\n".join(text_lines[:6])

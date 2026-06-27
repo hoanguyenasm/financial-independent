@@ -47,9 +47,8 @@ function ImportTab() {
 
   const defaultAccounts = DATA.ACCOUNTS.filter(a => a.is_active);
   const [accounts, setAccounts] = useState(defaultAccounts);
-  const [selectedAccountId, setSelectedAccountId] = useState(
-    defaultAccounts.length > 0 ? defaultAccounts[0].id : null
-  );
+  // 'auto' = detect the bank + owner from the statement and route automatically
+  const [selectedAccountId, setSelectedAccountId] = useState('auto');
   const [selectedUserId, setSelectedUserId] = useState(1);
 
   useEffect(() => {
@@ -60,7 +59,6 @@ function ImportTab() {
           cls: typeToClass(a.type), is_active: a.is_active,
         }));
         setAccounts(adapted);
-        setSelectedAccountId(adapted[0].id);
       }
     }).catch(() => {});
   }, []);
@@ -99,15 +97,19 @@ function ImportTab() {
       showToast('No rows parsed — format may not be supported yet', 'x');
     } else {
       const filesPart = log.files_processed > 1 ? `${log.files_processed} files · ` : '';
-      showToast(`${filesPart}${log.rows_imported} imported · ${log.rows_skipped} duplicates · ${log.rows_uncategorized} need review`, 'check');
+      const acct = accounts.find(a => a.id === log.account_id);
+      const acctPart = acct ? `→ ${acct.name} · ` : '';
+      showToast(`${acctPart}${filesPart}${log.rows_imported} imported · ${log.rows_skipped} duplicates · ${log.rows_uncategorized} need review`, 'check');
     }
   };
 
   const handleFile = async (file) => {
     if (!file) return;
+    const auto = selectedAccountId === 'auto';
+    const targetId = auto ? (accounts[0]?.id ?? 1) : selectedAccountId;
     setUploading(true); setError(''); setResult(null);
     try {
-      afterImport(await importFile(file, selectedAccountId ?? 1, selectedUserId));
+      afterImport(await importFile(file, targetId, selectedUserId, auto));
     } catch (err) {
       setError(err.message || 'Import failed');
     } finally {
@@ -206,6 +208,16 @@ function ImportTab() {
         <div className="card tight">
           <label className="fld">Target account</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <button className="dd-item"
+              onClick={() => setSelectedAccountId('auto')}
+              style={{
+                border: `1px solid ${selectedAccountId === 'auto' ? 'var(--accent)' : 'var(--border)'}`,
+                background: selectedAccountId === 'auto' ? 'var(--accent-soft)' : 'var(--surface-2)',
+              }}>
+              <Icon n="bolt" s={14} c="var(--accent)" />
+              <span style={{ flex: 1 }}>Auto-detect from statement <span className="fx">· recommended</span></span>
+              {selectedAccountId === 'auto' && <Icon n="check" s={14} c="var(--accent)" />}
+            </button>
             {accounts.map(a => (
               <button key={a.id} className="dd-item"
                 onClick={() => setSelectedAccountId(a.id)}

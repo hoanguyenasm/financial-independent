@@ -11,7 +11,7 @@ from app.parsers.csv_parser import decode_csv_bytes
 from app.parsers.pdf_parser import _extract_text_lines
 from app.parsers.balance_extractor import extract_balance
 from app.services.import_service import ImportService
-from app.services.account_router import detect_owner, detect_bank, route_account
+from app.services.account_router import detect_owner, detect_owner_from_text, detect_bank, route_account
 from app.services.category_seed import seed_category_rules
 from app.models import ImportLog, Account, Transaction
 from app.schemas import ImportLogRead, PathImportResult, TreeImportResult
@@ -36,6 +36,7 @@ async def import_file(
     file: UploadFile = File(...),
     account_id: int = Form(...),
     user_id: int = Form(...),
+    auto_detect: bool = Form(False),
     db: Session = Depends(get_db),
 ):
     ext = _extension(file.filename or "")
@@ -45,11 +46,27 @@ async def import_file(
     raw = await file.read()
     try:
         if ext == "csv":
-            rows = parse_csv(io.StringIO(decode_csv_bytes(raw)))
+            text = decode_csv_bytes(raw)
+            lines = text.splitlines()
+            rows = parse_csv(io.StringIO(text))
         else:
+            lines = _extract_text_lines(io.BytesIO(raw))
             rows = parse_pdf(io.BytesIO(raw))
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Failed to parse file: {exc}") from exc
+
+    # Auto-route to the right account by reading the bank + owner from the file.
+    if auto_detect:
+        bank = detect_bank(file.filename or "", lines)
+        owner = detect_owner_from_text(lines)
+        routed = route_account(db, bank, owner, lines)
+        if routed is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Could not auto-detect the account (bank={bank or '?'}, owner={owner or '?'}). "
+                       f"Pick the target account manually.",
+            )
+        account_id = routed
 
     file_hash = hashlib.sha256(raw).hexdigest()
     log = ImportService.run(

@@ -44,13 +44,18 @@ export async function importFile(
   file: File,
   accountId: number,
   userId: number,
+  autoDetect = false,
 ): Promise<ImportLogRead> {
   const fd = new FormData()
   fd.append('file', file)
   fd.append('account_id', String(accountId))
   fd.append('user_id', String(userId))
+  fd.append('auto_detect', String(autoDetect))
   const res = await fetch(`${BASE}/import`, { method: 'POST', body: fd })
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `${res.status} ${res.statusText}`)
+  }
   return res.json()
 }
 

@@ -1,5 +1,5 @@
 import pytest
-from app.services.account_router import detect_owner, detect_bank, route_account
+from app.services.account_router import detect_owner, detect_owner_from_text, detect_bank, route_account
 from app.models import Account
 
 
@@ -20,6 +20,13 @@ def test_detect_owner():
     assert detect_owner(r"G:\x\12_Budget_2026\Mai\Norah\f.pdf") == "Norah"
     assert detect_owner(r"G:\x\nope\f.pdf") is None
     assert detect_owner(r"G:\x\Hoangs-stuff\f.pdf") is None
+
+
+def test_detect_owner_from_text():
+    # Browser uploads have no folder path; owner is read from the statement body.
+    assert detect_owner_from_text(["Custom Statement", "DUC HOA NGUYEN", "..."]) == "Hoa"
+    assert detect_owner_from_text(["Kontoauszug", "Inhaber: Bao Ngoc Pham"]) == "Norah"
+    assert detect_owner_from_text(["no owner name here"]) is None
 
 
 def test_detect_bank_comdirect_csv():
