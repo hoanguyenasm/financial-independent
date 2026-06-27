@@ -50,6 +50,7 @@ function ImportTab() {
   // 'auto' = detect the bank + owner from the statement and route automatically
   const [selectedAccountId, setSelectedAccountId] = useState('auto');
   const [selectedUserId, setSelectedUserId] = useState(1);
+  const [manualOpen, setManualOpen] = useState(false);
 
   useEffect(() => {
     getAccounts(true).then(data => {
@@ -207,9 +208,9 @@ function ImportTab() {
 
         <div className="card tight">
           <label className="fld">Target account</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button className="dd-item"
-              onClick={() => setSelectedAccountId('auto')}
+              onClick={() => { setSelectedAccountId('auto'); setManualOpen(false); }}
               style={{
                 border: `1px solid ${selectedAccountId === 'auto' ? 'var(--accent)' : 'var(--border)'}`,
                 background: selectedAccountId === 'auto' ? 'var(--accent-soft)' : 'var(--surface-2)',
@@ -218,18 +219,27 @@ function ImportTab() {
               <span style={{ flex: 1 }}>Auto-detect from statement <span className="fx">· recommended</span></span>
               {selectedAccountId === 'auto' && <Icon n="check" s={14} c="var(--accent)" />}
             </button>
-            {accounts.map(a => (
-              <button key={a.id} className="dd-item"
-                onClick={() => setSelectedAccountId(a.id)}
-                style={{
-                  border: `1px solid ${a.id === selectedAccountId ? 'var(--accent)' : 'var(--border)'}`,
-                  background: a.id === selectedAccountId ? 'var(--accent-soft)' : 'var(--surface-2)',
-                }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: `var(--c-${a.cls})` }} />
-                <span style={{ flex: 1 }}>{a.name}</span>
-                {a.id === selectedAccountId && <Icon n="check" s={14} c="var(--accent)" />}
+
+            {!manualOpen && selectedAccountId === 'auto' ? (
+              <button className="dd-item" onClick={() => setManualOpen(true)}
+                style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-2)' }}>
+                <span style={{ flex: 1 }}>Override · choose account manually</span>
+                <Icon n="chev" s={13} />
               </button>
-            ))}
+            ) : (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <select className="inp" style={{ flex: 1 }}
+                  value={selectedAccountId === 'auto' ? '' : selectedAccountId}
+                  onChange={e => setSelectedAccountId(Number(e.target.value))}>
+                  <option value="" disabled>Select an account…</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <button className="btn ghost sm" title="Back to auto-detect"
+                  onClick={() => { setSelectedAccountId('auto'); setManualOpen(false); }}>
+                  <Icon n="x" s={14} />
+                </button>
+              </div>
+            )}
             {accounts.length === 0 && (
               <div className="fx" style={{ padding: '8px 4px' }}>No accounts found. Create one first.</div>
             )}
