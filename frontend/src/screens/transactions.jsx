@@ -35,7 +35,7 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
   const [fAcct, setFAcct] = useState('all');
   const [fCat, setFCat] = useState('all');
   const [fUser, setFUser] = useState('all');
-  const [fRange, setFRange] = useState('180');
+  const [fRange, setFRange] = useState('365');
   const last6Months = useMemo(() => {
     const months = [];
     const d = new Date();
