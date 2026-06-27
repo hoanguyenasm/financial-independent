@@ -173,15 +173,15 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
           style={needsReview ? { background: 'var(--warn-soft)', borderColor: 'rgba(251,191,36,.4)', color: 'var(--warn)' } : {}}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: needsReview ? 'var(--warn)' : 'var(--text-3)' }} />Needs review
         </button>
-        <Dropdown label="Account" display={fAcct === 'all' ? 'All' : (acctMap[fAcct]?.name ?? 'Account')}>
+        <Dropdown label="Account" searchable display={fAcct === 'all' ? 'All' : (acctMap[fAcct]?.name ?? 'Account')}>
           <DDItem on={fAcct === 'all'} onClick={() => setFAcct('all')}>All accounts</DDItem>
           <div className="dd-sep" />
           {accounts.filter(a => a.is_active).map(a => <DDItem key={a.id} on={fAcct === a.id} onClick={() => setFAcct(a.id)}>{a.name}</DDItem>)}
         </Dropdown>
-        <Dropdown label="Category" display={fCat === 'all' ? 'All' : FMT.catName(fCat)}>
+        <Dropdown label="Category" searchable display={fCat === 'all' ? 'All' : FMT.catName(fCat)}>
           <DDItem on={fCat === 'all'} onClick={() => setFCat('all')}>All categories</DDItem>
           <div className="dd-sep" />
-          {DATA.CATEGORIES.map(c => <DDItem key={c.id} on={fCat === c.id} onClick={() => setFCat(c.id)} dot={c.color}>{c.name}</DDItem>)}
+          {DATA.CATEGORIES.map(c => <DDItem key={c.id} on={fCat === c.id} onClick={() => setFCat(c.id)} dot={c.color} search={c.name}>{c.name}</DDItem>)}
         </Dropdown>
         <Dropdown label="User" display={fUser === 'all' ? 'Household' : DATA.USERS[fUser].name}>
           <DDItem on={fUser === 'all'} onClick={() => setFUser('all')}>Household</DDItem>

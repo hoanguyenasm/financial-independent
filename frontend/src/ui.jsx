@@ -2,7 +2,7 @@
    FIRE Tracker — shared UI primitives (ES module)
    ============================================================ */
 /* eslint-disable */
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, Children } from 'react';
 import { DATA, FMT, FX } from './data.js';
 
 /* ---------------- icons ---------------- */
@@ -82,15 +82,28 @@ function Check({ on, onChange, indeterminate }) {
 }
 
 /* ---------------- dropdown ---------------- */
-function Dropdown({ label, value, display, children, align = 'left', minWidth }) {
+function Dropdown({ label, value, display, children, align = 'left', minWidth, searchable, searchPlaceholder = 'Type to filter…' }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const ref = useRef(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setQuery(''); return; }
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('pointerdown', h, true);
     return () => document.removeEventListener('pointerdown', h, true);
   }, [open]);
+
+  let items = children;
+  if (searchable && query.trim()) {
+    const q = query.trim().toLowerCase();
+    items = Children.toArray(children).filter(ch => {
+      if (!ch || !ch.props) return false;
+      if (String(ch.props.className || '').includes('dd-sep')) return false; // hide separators while filtering
+      const t = ch.props.search ?? (typeof ch.props.children === 'string' ? ch.props.children : '');
+      return String(t).toLowerCase().includes(q);
+    });
+  }
+
   return (
     <div className="dd" ref={ref}>
       <button className="dd-btn" onClick={() => setOpen(o => !o)}>
@@ -99,8 +112,21 @@ function Dropdown({ label, value, display, children, align = 'left', minWidth })
         <Icon n="chev" s={13} c="var(--text-3)" />
       </button>
       {open && (
-        <div className={'dd-menu' + (align === 'right' ? ' right' : '')} style={{ minWidth }} onClick={() => setOpen(false)}>
-          {children}
+        <div className={'dd-menu' + (align === 'right' ? ' right' : '')} style={{ minWidth }}>
+          {searchable && (
+            <div style={{ padding: '6px 8px', position: 'sticky', top: 0, background: 'var(--surface-2, #161b27)', zIndex: 1 }}
+              onClick={e => e.stopPropagation()}>
+              <input className="inp" autoFocus value={query} onChange={e => setQuery(e.target.value)}
+                placeholder={searchPlaceholder} style={{ width: '100%', height: 30, fontSize: 13 }}
+                onKeyDown={e => { if (e.key === 'Escape') setOpen(false); }} />
+            </div>
+          )}
+          <div onClick={() => setOpen(false)} style={searchable ? { maxHeight: 300, overflowY: 'auto' } : undefined}>
+            {items}
+            {searchable && query.trim() && Children.count(items) === 0 && (
+              <div className="fx" style={{ padding: '8px 12px' }}>No match for “{query}”.</div>
+            )}
+          </div>
         </div>
       )}
     </div>
