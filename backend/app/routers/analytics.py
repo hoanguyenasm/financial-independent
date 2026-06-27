@@ -15,6 +15,9 @@ INCOME_TYPES = {"income", "dividend", "interest"}
 EXPENSE_TYPES = {"expense", "fee"}
 PASSIVE_TYPES = {"dividend", "interest"}
 INVESTMENT_TYPES = {"investment_buy", "investment_sell"}
+# Categories that are neither income nor expense — internal account moves and rental
+# deposits (Kaution) we merely hold on behalf of a tenant. Excluded from all cash-flow math.
+NEUTRAL_CATEGORIES = {"transfer", "deposit"}
 
 
 def _months_ago(d: date, months: int) -> date:
@@ -32,7 +35,7 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
     txs = db.query(Transaction).filter(Transaction.date >= cutoff).all()
     buckets: dict[str, dict[str, float]] = defaultdict(lambda: {"income": 0.0, "expense": 0.0})
     for tx in txs:
-        if tx.category == "transfer":  # internal movements are not income or expense
+        if tx.category in NEUTRAL_CATEGORIES:  # internal movements / deposits are not income or expense
             continue
         key = tx.date.strftime("%Y-%m")
         amount = _base_amount(tx)
@@ -59,10 +62,10 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
 def _by_category(db: Session, types: set[str], months: int, month: Optional[str]):
     """Aggregate transactions of the given types into per-category totals (abs base
     amount) and counts, for either a single calendar month or a trailing window.
-    Internal movements (category "transfer") are always excluded."""
+    Neutral categories (transfers, deposits) are always excluded."""
     q = db.query(Transaction).filter(
         Transaction.type.in_(types),
-        Transaction.category != "transfer",
+        Transaction.category.notin_(NEUTRAL_CATEGORIES),
     )
     if month:
         y, m = (int(p) for p in month.split("-"))
@@ -129,9 +132,9 @@ def summary(db: Session = Depends(get_db)):
 
     cutoff = _months_ago(date.today(), 11)
     txs = db.query(Transaction).filter(Transaction.date >= cutoff).all()
-    # internal movements (category "transfer") are neither income nor expense
-    income = sum(_base_amount(t) for t in txs if t.type in INCOME_TYPES and t.category != "transfer")
-    expenses = sum(abs(_base_amount(t)) for t in txs if t.type in EXPENSE_TYPES and t.category != "transfer")
+    # neutral categories (transfers, deposits) are neither income nor expense
+    income = sum(_base_amount(t) for t in txs if t.type in INCOME_TYPES and t.category not in NEUTRAL_CATEGORIES)
+    expenses = sum(abs(_base_amount(t)) for t in txs if t.type in EXPENSE_TYPES and t.category not in NEUTRAL_CATEGORIES)
     passive = sum(_base_amount(t) for t in txs if t.type in PASSIVE_TYPES)
     needs_review = db.query(Transaction).filter(Transaction.needs_review == True).count()  # noqa: E712
 

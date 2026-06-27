@@ -36,6 +36,15 @@ def test_categorize_direction_aware_and_rule_before_transfer():
     assert cz("Fee reversal nets to zero", _rules(), 0.0, "") == ("uncategorized", True)
 
 
+def test_deposit_rule_matches_both_directions():
+    # A neutral "deposit" rule must catch both the incoming Kaution (credit) and the
+    # refund (debit) — unlike income/expense rules which are direction-specific.
+    rules = [CategoryRule(pattern="Kaution", category="deposit")]
+    cz = ImportService._categorize
+    assert cz("Mietkaution erhalten", rules, 1500.0, "income") == ("deposit", False)   # received
+    assert cz("Kaution Rückzahlung", rules, -1500.0, "expense") == ("deposit", False)  # refunded
+
+
 def test_savings_plan_buy_categorized_as_etf():
     cz = ImportService._categorize
     # Sparplan / savings plan execution = passive recurring ETF buy -> "etf"

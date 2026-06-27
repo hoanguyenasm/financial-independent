@@ -41,6 +41,9 @@ _DIVIDEND_KW = {
 
 # Module constants for categorization logic
 _INCOME_CATEGORIES = {"salary", "rental", "airbnb", "interest", "dividend", "income"}
+# Neutral categories are direction-agnostic: a deposit (Kaution) or transfer rule must
+# match whether the money is coming in or going back out.
+_NEUTRAL_CATEGORIES = {"transfer", "deposit"}
 _HOUSEHOLD_NAMES = ("duc hoa nguyen", "bao ngoc pham", "ngoc pham")
 
 
@@ -66,10 +69,11 @@ class ImportService:
     def _categorize(description: str, rules: list[CategoryRule], amount: float = 0.0, tx_type: str = "") -> tuple[str, bool]:
         lower_desc = description.lower()
         credit = amount > 0
-        # 1. explicit rules, direction-aware (rules win over the transfer type)
+        # 1. explicit rules, direction-aware (rules win over the transfer type).
+        #    Neutral categories (deposit/transfer) match regardless of direction.
         for rule in rules:
             if rule.pattern.lower() in lower_desc:
-                if credit == (rule.category in _INCOME_CATEGORIES):
+                if rule.category in _NEUTRAL_CATEGORIES or credit == (rule.category in _INCOME_CATEGORIES):
                     return rule.category, False
         # 2. household self-transfers are internal
         if any(n in lower_desc for n in _HOUSEHOLD_NAMES):

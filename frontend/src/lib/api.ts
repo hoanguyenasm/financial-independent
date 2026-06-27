@@ -22,8 +22,23 @@ export const updateSettings = (base_currency: string) =>
 export const patchTransaction = (id: number, body: Record<string, unknown>) =>
   api(`/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
 
+export interface CategoryRuleRead {
+  id: number
+  pattern: string
+  category: string
+  account_id: number | null
+  created_at: string
+  match_count: number | null
+}
+
+export const getCategoryRules = () =>
+  api<CategoryRuleRead[]>('/category-rules')
+
 export const createCategoryRule = (pattern: string, category: string) =>
   api('/category-rules', { method: 'POST', body: JSON.stringify({ pattern, category }) })
+
+export const updateCategoryRule = (id: number, body: { pattern?: string; category?: string }) =>
+  api<CategoryRuleRead>(`/category-rules/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
 
 export const deleteCategoryRule = (id: number) =>
   api(`/category-rules/${id}`, { method: 'DELETE' })

@@ -217,6 +217,28 @@ def test_transfers_excluded_from_expenses(client):
     assert summary["base_monthly_savings"] == round((4000.0 - 300.0) / 12, 2)
 
 
+def test_deposit_is_neutral_in_cashflow_and_summary(client):
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    _tx(client, user_id, account_id, f"{m}-01", 4000.0, "income", "salary")
+    _tx(client, user_id, account_id, f"{m}-02", -800.0, "expense", "groceries")
+    # received and refunded Kaution — both tagged deposit, must not move income/expense
+    _tx(client, user_id, account_id, f"{m}-03", 1500.0, "income", "deposit")   # received
+    _tx(client, user_id, account_id, f"{m}-04", -1500.0, "expense", "deposit")  # refunded
+
+    row = next(r for r in client.get("/analytics/cashflow-monthly").json() if r["month"] == m)
+    assert row["income"] == 4000.0
+    assert row["expense"] == 800.0
+
+    inc = {r["category"]: r for r in client.get("/analytics/income-by-category").json()}
+    exp = {r["category"]: r for r in client.get("/analytics/expense-by-category").json()}
+    assert "deposit" not in inc and "deposit" not in exp
+
+    s = client.get("/analytics/summary").json()
+    assert s["monthly_expenses"] == round(800.0 / 12, 2)
+    assert s["savings_rate"] == round((4000.0 - 800.0) / 4000.0, 4)
+
+
 def test_summary_includes_fi_target(client):
     user = client.post("/users", json={"name": "Hoa", "email": "hoa@example.com"}).json()
     goal_payload = {

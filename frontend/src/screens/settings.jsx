@@ -2,10 +2,10 @@
    Screen — Import & Settings  (two tabs)
    ============================================================ */
 /* eslint-disable */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, clearAllImportLogs, recategorizeAll } from '../lib/api.ts';
+import { getSettings, updateSettings, getCategoryRules, updateCategoryRule, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, clearAllImportLogs, recategorizeAll } from '../lib/api.ts';
 import { saveCache, loadCache, clearAllCache } from '../lib/cache.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
@@ -374,7 +374,42 @@ function PreviewStat({ n, label, color }) {
 /* ---------------- SETTINGS ---------------- */
 function SettingsTab({ currency, setCurrency }) {
   const [cats, setCats] = useState(DATA.CATEGORIES);
-  const [rules, setRules] = useState(DATA.RULES);
+  // Normalize the mock shape ({match, cat, hits}) to the live shape so both render the same.
+  const [rules, setRules] = useState(() => DATA.RULES.map(r => ({ id: r.id, pattern: r.match, category: r.cat, match_count: r.hits })));
+  useEffect(() => {
+    getCategoryRules()
+      .then(data => setRules(data.map(r => ({ id: r.id, pattern: r.pattern, category: r.category, match_count: r.match_count }))))
+      .catch(() => {});
+  }, []);
+  const [hideUnused, setHideUnused] = useState(true);
+  const [savingRuleId, setSavingRuleId] = useState(null);
+
+  // Change a rule's category, then reapply all rules to existing data automatically.
+  const changeRuleCategory = async (ruleId, newCat) => {
+    setSavingRuleId(ruleId);
+    setRules(list => list.map(r => r.id === ruleId ? { ...r, category: newCat } : r)); // optimistic
+    try {
+      await updateCategoryRule(ruleId, { category: newCat });
+      const { updated } = await recategorizeAll();
+      clearAllCache(); // categories changed — invalidate cached analytics/transactions
+      const data = await getCategoryRules();
+      setRules(data.map(r => ({ id: r.id, pattern: r.pattern, category: r.category, match_count: r.match_count })));
+      showToast(`Rule updated · ${updated} transaction${updated === 1 ? '' : 's'} re-categorized`, 'bolt');
+    } catch (err) {
+      showToast('Update failed: ' + (err.message || 'unknown error'), 'x');
+      getCategoryRules() // revert optimistic change to server truth
+        .then(data => setRules(data.map(r => ({ id: r.id, pattern: r.pattern, category: r.category, match_count: r.match_count }))))
+        .catch(() => {});
+    } finally {
+      setSavingRuleId(null);
+    }
+  };
+  // Most-applied first; hide rules that currently match nothing when the toggle is on.
+  const shownRules = useMemo(() => {
+    const list = hideUnused ? rules.filter(r => (r.match_count ?? 0) > 0) : rules;
+    return [...list].sort((a, b) => (b.match_count ?? 0) - (a.match_count ?? 0));
+  }, [rules, hideUnused]);
+  const unusedCount = useMemo(() => rules.filter(r => (r.match_count ?? 0) === 0).length, [rules]);
   const [goal, setGoal] = useState({ target: 1500000, date: '2037-01', swr: 3.5, ret: 5.0, infl: 2.0 });
   useEffect(() => {
     getFIGoal(1).then(g => {
@@ -459,18 +494,50 @@ function SettingsTab({ currency, setCurrency }) {
 
       {/* RULES + FX */}
       <section className="card">
-        <div className="card-h"><div className="t"><b>Auto-categorization rules</b></div></div>
+        <div className="card-h">
+          <div className="t"><b>Auto-categorization rules</b></div>
+          <div className="row" style={{ marginLeft: 'auto', gap: 10 }}>
+            <span className="fx">{shownRules.length} of {rules.length} · sorted by most applied</span>
+            {unusedCount > 0 && (
+              <button className="btn sm ghost" onClick={() => setHideUnused(v => !v)}>
+                {hideUnused ? `Show ${unusedCount} unused` : 'Hide unused'}
+              </button>
+            )}
+          </div>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', marginBottom: 18 }}>
-          {rules.map((r, i) => (
-            <div key={r.id} className="spread" style={{ padding: '9px 4px', borderBottom: i < rules.length - 1 ? '1px solid var(--border)' : 'none' }}>
+          {rules.length === 0 && <div className="kpi-sub" style={{ padding: '12px 4px' }}>No rules yet. Categorize a transaction and choose “Create a rule” to add one.</div>}
+          {rules.length > 0 && shownRules.length === 0 && <div className="kpi-sub" style={{ padding: '12px 4px' }}>No rules are matching any transactions yet.</div>}
+          {shownRules.map((r, i) => {
+            const saving = savingRuleId === r.id;
+            return (
+            <div key={r.id} className="spread" style={{ padding: '9px 4px', borderBottom: i < shownRules.length - 1 ? '1px solid var(--border)' : 'none', opacity: saving ? 0.6 : 1 }}>
               <div className="row" style={{ gap: 9 }}>
-                <span className="mono" style={{ fontSize: 12, color: 'var(--text-2)', background: 'var(--surface-2)', padding: '3px 7px', borderRadius: 6, border: '1px solid var(--border)' }}>{r.match}</span>
+                <span className="mono" style={{ fontSize: 12, color: 'var(--text-2)', background: 'var(--surface-2)', padding: '3px 7px', borderRadius: 6, border: '1px solid var(--border)' }}>{r.pattern}</span>
                 <Icon n="arrowR" s={13} c="var(--text-3)" />
-                <span className="catcell" style={{ color: FMT.catColor(r.cat) }}><span className="dot-c" style={{ background: FMT.catColor(r.cat) }} />{FMT.catName(r.cat)}</span>
+                <span className="dot-c" style={{ background: FMT.catColor(r.category) }} />
+                <select
+                  className="inp"
+                  style={{ width: 'auto', padding: '4px 8px', fontSize: 13, fontWeight: 600, color: FMT.catColor(r.category) }}
+                  value={r.category}
+                  disabled={saving}
+                  title="Change the category — the rule is reapplied to all transactions automatically"
+                  onChange={e => changeRuleCategory(r.id, e.target.value)}
+                >
+                  {Object.entries(cats.reduce((acc, c) => { (acc[c.group] ??= []).push(c); return acc; }, {})).map(([group, list]) => (
+                    <optgroup key={group} label={group}>
+                      {list.map(c => <option key={c.id} value={c.id} style={{ color: 'var(--text)' }}>{c.name}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
-              <div className="row" style={{ gap: 10 }}><span className="fx">{r.hits} matches</span><button className="btn icon" style={{ padding: 4, background: 'transparent', border: 0 }} onClick={() => { setRules(list => list.filter(x => x.id !== r.id)); deleteCategoryRule(r.id).catch(() => {}); }}><Icon n="trash" s={15} c="var(--text-3)" /></button></div>
+              <div className="row" style={{ gap: 10 }}>
+                <span className="fx" title="Transactions currently categorized by this rule">{saving ? 'applying…' : `${r.match_count ?? 0} applied`}</span>
+                <button className="btn icon" style={{ padding: 4, background: 'transparent', border: 0 }} disabled={saving} onClick={() => { setRules(list => list.filter(x => x.id !== r.id)); deleteCategoryRule(r.id).catch(() => {}); }}><Icon n="trash" s={15} c="var(--text-3)" /></button>
+              </div>
             </div>
-          ))}
+            );
+          })}
         </div>
         <div className="sep" />
         <div className="card-h" style={{ marginTop: 4 }}><div className="t"><b>FX rate override</b></div><span className="fx" style={{ marginLeft: 'auto' }}>1 EUR =</span></div>

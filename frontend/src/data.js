@@ -116,8 +116,8 @@
     { id: 'utilities', name: 'Utilities', kind: 'expense', group: 'Housing', color: '#60A5FA' },
     { id: 'groceries', name: 'Groceries', kind: 'expense', group: 'Food', color: '#7CCB4E' },
     { id: 'dining', name: 'Dining', kind: 'expense', group: 'Food', color: '#FB923C' },
-    { id: 'insurance', name: 'Insurance', kind: 'expense', group: 'Insurance & Telecom', color: '#F87171' },
-    { id: 'telecom', name: 'Telecom', kind: 'expense', group: 'Insurance & Telecom', color: '#F472B6' },
+    { id: 'insurance', name: 'Insurance', kind: 'expense', group: 'Insurance', color: '#F87171' },
+    { id: 'telecom', name: 'Telecom', kind: 'expense', group: 'Housing', color: '#F472B6' },
     { id: 'tax', name: 'Tax', kind: 'expense', group: 'Tax', color: '#C084FC' },
     { id: 'health', name: 'Healthcare', kind: 'expense', group: 'Healthcare', color: '#34D399' },
     { id: 'ivf', name: 'IVF', kind: 'expense', group: 'Healthcare', color: '#2DD4BF' },
@@ -130,6 +130,8 @@
     { id: 'unterhalt', name: 'Unterhalt', kind: 'expense', group: 'Unterhalt', color: '#E8A33D' },
     { id: 'other', name: 'Other', kind: 'expense', group: 'Other', color: '#8595AD' },
     { id: 'loan', name: 'Loan repayment', kind: 'expense', group: 'Other', color: '#94A3B8' },
+    // neutral movements — held on our behalf, not income or expense
+    { id: 'deposit', name: 'Deposit (Kaution)', kind: 'transfer', group: 'Transfer', color: '#A78BFA' },
     // system (display-only; not normally chosen by hand)
     { id: 'transfer', name: 'Transfer', kind: 'transfer', group: 'Transfer', color: '#94A3B8' },
     { id: 'uncategorized', name: 'Uncategorized', kind: 'expense', group: 'Other', color: 'var(--text-3)' },
@@ -141,13 +143,13 @@
   // ---- expense GROUPS (for the expandable Cash Flow view) ----
   // current-month subcategory amounts in EUR (grounded in the April report)
   const GROUP_DEFS = [
-    { group: 'Housing', color: '#4D9BFF', subs: [['mortgage', 6943], ['utilities', 668]] },
+    { group: 'Housing', color: '#4D9BFF', subs: [['mortgage', 6943], ['utilities', 668], ['telecom', 124]] },
     { group: 'Lifestyle', color: '#F472B6', subs: [['travel', 1198], ['shopping', 500], ['subscriptions', 64]] },
     { group: 'Unterhalt', color: '#E8A33D', subs: [['unterhalt', 1272]] },
     { group: 'Food', color: '#7CCB4E', subs: [['groceries', 640], ['dining', 380]] },
     { group: 'Transport', color: '#38BDF8', subs: [['car', 220], ['transit', 60]] },
     { group: 'Healthcare', color: '#34D399', subs: [['ivf', 326], ['health', 180], ['fitness', 78]] },
-    { group: 'Insurance & Telecom', color: '#F87171', subs: [['insurance', 402], ['telecom', 124]] },
+    { group: 'Insurance', color: '#F87171', subs: [['insurance', 402]] },
     { group: 'Tax', color: '#C084FC', subs: [['tax', 890]] },
     { group: 'Other', color: '#8595AD', subs: [['other', 480]] },
   ];
