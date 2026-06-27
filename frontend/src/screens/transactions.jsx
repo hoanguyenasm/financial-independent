@@ -16,6 +16,17 @@ function typeToClass(type) {
   return 'bank';
 }
 
+/* Guess a reusable keyword from a bank description so a rule matches future
+   siblings. Comdirect lines read "Auftraggeber: <merchant> Buchungstext: …";
+   the merchant is the stable part (refs/IDs differ every time). */
+function suggestPattern(desc) {
+  if (!desc) return '';
+  const m = desc.match(/Auftraggeber:\s*(.+?)\s*(?:Buchungstext:|Verwendungszweck:|Buchungsschluessel:|Ref\.|$)/i);
+  let s = (m ? m[1] : desc).replace(/\s+/g, ' ').trim();
+  if (s.length > 40) s = s.slice(0, 40).trim();
+  return s;
+}
+
 export function TransactionsScreen({ go, currency, household, initialFilter, registerSetReview, myUserId = 1 }) {
   const _adaptTx = (data) => data.map(t => ({ ...t, d: new Date(t.date), desc: t.description, amount_base: t.amount_base ?? t.amount }));
   const _adaptAccounts = (data) => data.map(a => ({ id: a.id, name: a.name, type: a.type, orig_cur: a.currency, cls: typeToClass(a.type), base: 0, orig_bal: 0, is_active: a.is_active }));
@@ -51,6 +62,7 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
   const [page, setPage] = useState(0);
   const [menu, setMenu] = useState(null);       // {ids:[], x, y, bulk}
   const [rulePrompt, setRulePrompt] = useState(null); // {desc, catId}
+  const [rulePattern, setRulePattern] = useState('');
   const [toast, showToast] = useToast();
   const pageSize = 11;
 
@@ -117,6 +129,7 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
     applyCat(ids, catId);
     if (!menu.bulk && ids.length === 1) {
       const t = tx.find(x => x.id === ids[0]);
+      setRulePattern(suggestPattern(t.desc));
       setRulePrompt({ desc: t.desc, catId, count: ids.length });
     } else {
       showToast(`${ids.length} transactions set to ${FMT.catName(catId)}`);
@@ -244,24 +257,58 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
       {menu && <CatMenu x={menu.x} y={menu.y} bulk={menu.bulk} count={menu.ids.length} onPick={onPickCat} onClose={() => setMenu(null)} />}
 
       {/* ALWAYS-CATEGORIZE PROMPT */}
-      {rulePrompt && (
+      {rulePrompt && (() => {
+        const pat = rulePattern.trim().toLowerCase();
+        const matchCount = pat ? tx.filter(t => t.needs_review && t.desc.toLowerCase().includes(pat)).length : 0;
+        const applyRule = () => {
+          const clean = rulePattern.trim();
+          if (!clean) { setRulePrompt(null); return; }
+          createCategoryRule(clean, rulePrompt.catId).catch(() => {});
+          const low = clean.toLowerCase();
+          const ids = tx.filter(t => t.needs_review && t.desc.toLowerCase().includes(low)).map(t => t.id);
+          if (ids.length) applyCat(ids, rulePrompt.catId);
+          showToast(
+            ids.length
+              ? `Rule saved · ${ids.length} more review${ids.length > 1 ? 's' : ''} categorized`
+              : 'Rule saved · future matches auto-categorized',
+            'bolt'
+          );
+          setRulePrompt(null);
+        };
+        return (
         <div className="scrim" onClick={() => setRulePrompt(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="row" style={{ gap: 11, marginBottom: 14 }}>
               <span style={{ width: 38, height: 38, borderRadius: 11, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon n="bolt" s={20} c="var(--accent)" /></span>
-              <div><div style={{ fontSize: 16, fontWeight: 800 }}>Create a rule?</div><div className="kpi-sub">Auto-categorize future matches</div></div>
+              <div><div style={{ fontSize: 16, fontWeight: 800 }}>Create a rule?</div><div className="kpi-sub">Auto-categorize matching transactions</div></div>
             </div>
-            <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.55, margin: '0 0 20px' }}>
-              Always categorize transactions matching <b style={{ color: 'var(--text)' }}>“{rulePrompt.desc}”</b> as{' '}
-              <span style={{ color: FMT.catColor(rulePrompt.catId), fontWeight: 700 }}>{FMT.catName(rulePrompt.catId)}</span>?
+            <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.55, margin: '0 0 12px' }}>
+              Categorize any transaction whose description contains this text as{' '}
+              <span style={{ color: FMT.catColor(rulePrompt.catId), fontWeight: 700 }}>{FMT.catName(rulePrompt.catId)}</span>:
+            </p>
+            <input
+              className="inp"
+              value={rulePattern}
+              onChange={e => setRulePattern(e.target.value)}
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') applyRule(); }}
+              style={{ width: '100%', marginBottom: 10, fontWeight: 600 }}
+            />
+            <p className="kpi-sub" style={{ margin: '0 0 20px' }}>
+              {pat
+                ? <>Matches <b style={{ color: matchCount ? 'var(--warn)' : 'var(--text-3)' }}>{matchCount}</b> open review{matchCount === 1 ? '' : 's'} right now · also applies to future imports.</>
+                : 'Enter a keyword to match (e.g. a merchant name).'}
             </p>
             <div className="row" style={{ gap: 10, justifyContent: 'flex-end' }}>
               <button className="btn ghost" onClick={() => { showToast('Categorized once'); setRulePrompt(null); }}>No, just this one</button>
-              <button className="btn primary" onClick={() => { createCategoryRule(rulePrompt.desc, rulePrompt.catId).catch(() => {}); showToast('Rule created · future matches auto-categorized', 'bolt'); setRulePrompt(null); }}>Yes, always</button>
+              <button className="btn primary" disabled={!rulePattern.trim()} onClick={applyRule}>
+                {matchCount > 1 ? `Yes — apply to ${matchCount}` : 'Yes, always'}
+              </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
       {toast}
     </div>
   );
