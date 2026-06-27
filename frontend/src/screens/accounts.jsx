@@ -16,6 +16,14 @@ function typeToClass(type) {
   return 'bank';
 }
 
+/* Owner is encoded in the account name as a trailing "(Hoa)" / "(Norah)" tag. */
+function ownerOf(name) {
+  const m = /\(([^)]+)\)\s*$/.exec(name || '');
+  return m ? m[1].trim() : 'Other';
+}
+const OWNER_ORDER = ['Hoa', 'Norah'];
+const OWNER_COLOR = { Hoa: 'var(--you)', Norah: 'var(--partner)' };
+
 export function AccountsScreen({ go, currency, household }) {
   const M = (v, dec) => FMT.display(currency, v, dec);
   const MC = (v) => FMT.displayCompact(currency, v);
@@ -24,7 +32,10 @@ export function AccountsScreen({ go, currency, household }) {
 
   const _adaptAccounts = (data) => data.map(a => ({
     id: a.id, name: a.name, type: a.type, orig_cur: a.currency,
-    cls: typeToClass(a.type), base: 0, orig_bal: 0, is_active: a.is_active,
+    cls: typeToClass(a.type),
+    base: FMT.toBase(a.currency, a.balance ?? 0),
+    orig_bal: a.balance ?? 0,
+    is_active: a.is_active,
   }));
   const _cachedAccounts = loadCache('accounts');
   const [liveAccounts, setLiveAccounts] = useState(() => _cachedAccounts ? _adaptAccounts(_cachedAccounts) : DATA.ACCOUNTS);
@@ -86,6 +97,25 @@ export function AccountsScreen({ go, currency, household }) {
       monthly_income: ('expected_monthly_income' in a ? a.expected_monthly_income : a.monthly_income) ?? 0,
     };
   });
+  const ownerGroups = React.useMemo(() => {
+    const byOwner = {};
+    for (const a of liveAccounts) {
+      const owner = ownerOf(a.name);
+      (byOwner[owner] ??= []).push(a);
+    }
+    return Object.entries(byOwner)
+      .map(([owner, items]) => ({
+        owner,
+        items,
+        total: items.reduce((s, a) => s + (a.base || 0), 0),
+        active: items.filter(a => a.is_active).length,
+      }))
+      .sort((a, b) => {
+        const ia = OWNER_ORDER.indexOf(a.owner), ib = OWNER_ORDER.indexOf(b.owner);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+      });
+  }, [liveAccounts]);
+
   const groups = [
     { key: 'stocks', label: 'Stocks & ETFs', items: assets.filter(a => a.type === 'stocks') },
     { key: 'crypto', label: 'Crypto', items: assets.filter(a => a.type === 'crypto') },
@@ -171,27 +201,42 @@ export function AccountsScreen({ go, currency, household }) {
         </section>
       </div>
 
-      {/* ACCOUNTS LIST */}
+      {/* ACCOUNTS LIST — split by owner */}
       <section className="card" style={{ marginBottom: 18 }}>
         <div className="card-h"><div className="t"><b>Accounts</b></div><span className="kpi-sub" style={{ marginLeft: 'auto' }}>balance · original currency</span></div>
-        <div className="gridcols-3">
-          {liveAccounts.map(a => (
-            <div key={a.id} className="clickable" onClick={() => go('transactions', { account: a.id })}
-              style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 14, borderRadius: 14, border: '1px solid var(--border)', background: 'var(--surface-2)', opacity: a.is_active ? 1 : .5 }}>
-              <span style={{ width: 38, height: 38, borderRadius: 11, flex: '0 0 auto', background: `color-mix(in srgb, var(--c-${a.cls}) 18%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon n={a.cls === 'stocks' ? 'trend' : a.cls === 'crypto' ? 'coin' : a.cls === 'realestate' ? 'building' : a.cls === 'other' ? 'doc' : 'wallet'} s={18} c={`var(--c-${a.cls})`} />
+        {ownerGroups.map(g => (
+          <div key={g.owner} style={{ marginBottom: 18 }}>
+            <div className="spread" style={{ margin: '2px 2px 12px', paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+              <span className="row" style={{ gap: 9 }}>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: OWNER_COLOR[g.owner] ?? 'var(--text-3)' }} />
+                <b style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '.06em' }}>{g.owner}</b>
+                <span className="kpi-sub">{g.active} account{g.active === 1 ? '' : 's'}</span>
               </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="row" style={{ gap: 7 }}><b style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</b>{!a.is_active && <span className="tag ghost sm">inactive</span>}</div>
-                <div className="fx">{a.type} · {a.orig_cur}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div className="num" style={{ fontWeight: 800, fontSize: 15 }}>{MC(a.base)}</div>
-                {a.orig_cur !== currency && a.base > 0 && <div className="fx">{FMT.orig(a.orig_cur, a.orig_bal)}</div>}
-              </div>
+              <span className="row" style={{ gap: 8 }}>
+                <span className="kpi-sub">subtotal</span>
+                <span className="num" style={{ fontWeight: 800, fontSize: 15 }}>{M(g.total)}</span>
+              </span>
             </div>
-          ))}
-        </div>
+            <div className="gridcols-3">
+              {g.items.map(a => (
+                <div key={a.id} className="clickable" onClick={() => go('transactions', { account: a.id })}
+                  style={{ display: 'flex', alignItems: 'center', gap: 13, padding: 14, borderRadius: 14, border: '1px solid var(--border)', background: 'var(--surface-2)', opacity: a.is_active ? 1 : .5 }}>
+                  <span style={{ width: 38, height: 38, borderRadius: 11, flex: '0 0 auto', background: `color-mix(in srgb, var(--c-${a.cls}) 18%, transparent)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Icon n={a.cls === 'stocks' ? 'trend' : a.cls === 'crypto' ? 'coin' : a.cls === 'realestate' ? 'building' : a.cls === 'other' ? 'doc' : 'wallet'} s={18} c={`var(--c-${a.cls})`} />
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="row" style={{ gap: 7 }}><b style={{ fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name}</b>{!a.is_active && <span className="tag ghost sm">inactive</span>}</div>
+                    <div className="fx">{a.type} · {a.orig_cur}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="num" style={{ fontWeight: 800, fontSize: 15 }}>{MC(a.base)}</div>
+                    {a.orig_cur !== currency && a.base > 0 && <div className="fx">{FMT.orig(a.orig_cur, a.orig_bal)}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </section>
 
       {showCreateModal && (
