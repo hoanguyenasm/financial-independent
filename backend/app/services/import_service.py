@@ -129,6 +129,7 @@ class ImportService:
             or_(CategoryRule.account_id == account_id, CategoryRule.account_id.is_(None))
         ).all()
         imported = skipped = uncategorized = 0
+        new_txs: list[Transaction] = []
 
         for row in rows:
             if cls._is_duplicate(db, account_id, row):
@@ -155,6 +156,7 @@ class ImportService:
                 source="import",
             )
             db.add(tx)
+            new_txs.append(tx)
             imported += 1
 
         log = ImportLog(
@@ -168,6 +170,11 @@ class ImportService:
             file_hash=file_hash,
         )
         db.add(log)
+        db.flush()  # populate log.id
+
+        for tx in new_txs:
+            tx.import_log_id = log.id
+
         db.commit()
         db.refresh(log)
         return log

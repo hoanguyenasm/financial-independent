@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, clearAllImportLogs } from '../lib/api.ts';
+import { getSettings, updateSettings, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, clearAllImportLogs } from '../lib/api.ts';
 import { saveCache, loadCache, clearAllCache } from '../lib/cache.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
@@ -67,6 +67,7 @@ function ImportTab() {
 
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDeleteLogId, setConfirmDeleteLogId] = useState(null);
 
   const loadHistory = () => getImportLogs().then(data => { saveCache('import_logs', data); setHistory(data); }).catch(() => {});
 
@@ -257,21 +258,48 @@ function ImportTab() {
         </div>
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table className="tbl">
-            <thead><tr><th>File</th><th>Account</th><th>Date</th><th className="r">Rows</th><th className="c">Status</th></tr></thead>
+            <thead><tr><th>File</th><th>Account</th><th>Date</th><th className="r">Rows</th><th className="c">Status</th><th style={{ width: 32 }}></th></tr></thead>
             <tbody>
-              {history.map(h => (
-                <tr key={h.id}>
-                  <td><div className="row" style={{ gap: 9 }}><Icon n="doc" s={15} c="var(--text-3)" /><span style={{ fontWeight: 600 }}>{h.file || h.filename}</span></div></td>
-                  <td className="t2" style={{ fontSize: 12.5 }}>{h.acct ? (DATA.ACCT[h.acct] ? DATA.ACCT[h.acct].name : h.acct) : `Account ${h.account_id}`}</td>
-                  <td className="mono" style={{ fontSize: 12, color: 'var(--text-2)' }}>{h.date || (h.imported_at ? new Date(h.imported_at).toLocaleDateString() : '—')}</td>
-                  <td className="r mono" style={{ fontWeight: 700 }}>{h.rows || h.rows_imported || '—'}</td>
-                  <td className="c">
-                    <span className={'tag sm ' + (h.status === 'success' || h.status === 'done' ? 'pos' : h.status === 'partial' ? 'warn' : 'neg')}>{h.status || 'done'}</span>
-                  </td>
-                </tr>
-              ))}
+              {history.map(h => {
+                const confirming = confirmDeleteLogId === h.id;
+                return (
+                  <tr key={h.id}>
+                    <td><div className="row" style={{ gap: 9 }}><Icon n="doc" s={15} c="var(--text-3)" /><span style={{ fontWeight: 600 }}>{h.file || h.filename}</span></div></td>
+                    <td className="t2" style={{ fontSize: 12.5 }}>{h.acct ? (DATA.ACCT[h.acct] ? DATA.ACCT[h.acct].name : h.acct) : `Account ${h.account_id}`}</td>
+                    <td className="mono" style={{ fontSize: 12, color: 'var(--text-2)' }}>{h.date || (h.imported_at ? new Date(h.imported_at).toLocaleDateString() : '—')}</td>
+                    <td className="r mono" style={{ fontWeight: 700 }}>{h.rows || h.rows_imported || '—'}</td>
+                    <td className="c">
+                      <span className={'tag sm ' + (h.status === 'success' || h.status === 'done' ? 'pos' : h.status === 'partial' ? 'warn' : 'neg')}>{h.status || 'done'}</span>
+                    </td>
+                    <td>
+                      <button
+                        className={'btn icon sm' + (confirming ? ' neg' : '')}
+                        title={confirming ? 'Click again to delete this import and its transactions' : 'Delete this import'}
+                        style={{ opacity: confirming ? 1 : 0.35, color: confirming ? 'var(--neg)' : undefined, fontSize: confirming ? 10 : undefined, width: confirming ? 'auto' : 28, padding: confirming ? '0 8px' : undefined }}
+                        onMouseEnter={e => { if (!confirming) e.currentTarget.style.opacity = 1; }}
+                        onMouseLeave={e => { if (!confirming) e.currentTarget.style.opacity = 0.35; }}
+                        onBlur={() => setConfirmDeleteLogId(null)}
+                        onClick={async () => {
+                          if (!confirming) { setConfirmDeleteLogId(h.id); return; }
+                          setConfirmDeleteLogId(null);
+                          try {
+                            await deleteImportLog(h.id);
+                            const updated = history.filter(x => x.id !== h.id);
+                            saveCache('import_logs', updated);
+                            setHistory(updated);
+                          } catch (err) {
+                            showToast('Delete failed: ' + (err.message || 'unknown'), 'x');
+                          }
+                        }}
+                      >
+                        {confirming ? 'Delete?' : <Icon n="x" s={13} />}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {history.length === 0 && (
-                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '24px 0' }}>No imports yet</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '24px 0' }}>No imports yet</td></tr>
               )}
             </tbody>
           </table>

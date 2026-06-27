@@ -22,4 +22,5 @@ class Transaction(Base):
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     source: Mapped[str] = mapped_column(String(20))
     asset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("assets.id"), nullable=True)
+    import_log_id: Mapped[Optional[int]] = mapped_column(ForeignKey("import_logs.id"), nullable=True, index=True)
     imported_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))

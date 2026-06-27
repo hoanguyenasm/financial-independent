@@ -13,7 +13,7 @@ from app.parsers.balance_extractor import extract_balance
 from app.services.import_service import ImportService
 from app.services.account_router import detect_owner, detect_bank, route_account
 from app.services.category_seed import seed_category_rules
-from app.models import ImportLog, Account
+from app.models import ImportLog, Account, Transaction
 from app.schemas import ImportLogRead, PathImportResult, TreeImportResult
 
 router = APIRouter(prefix="/import", tags=["import"])
@@ -200,7 +200,18 @@ def list_import_logs(
     return q.order_by(ImportLog.imported_at.desc()).all()
 
 
+@router.delete("/logs/{log_id}", status_code=204)
+def delete_import_log(log_id: int, db: Session = Depends(get_db)):
+    log = db.get(ImportLog, log_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="Import log not found")
+    db.query(Transaction).filter(Transaction.import_log_id == log_id).delete()
+    db.delete(log)
+    db.commit()
+
+
 @router.delete("/logs", status_code=204)
 def delete_all_import_logs(db: Session = Depends(get_db)):
+    db.query(Transaction).filter(Transaction.import_log_id.isnot(None)).delete()
     db.query(ImportLog).delete()
     db.commit()

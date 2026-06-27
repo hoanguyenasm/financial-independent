@@ -241,5 +241,8 @@ export const getNWSnapshots = (limit = 24) =>
 export const clearAllTransactions = () =>
   api<void>('/transactions', { method: 'DELETE' })
 
+export const deleteImportLog = (id: number) =>
+  api<void>(`/import/logs/${id}`, { method: 'DELETE' })
+
 export const clearAllImportLogs = () =>
   api<void>('/import/logs', { method: 'DELETE' })
