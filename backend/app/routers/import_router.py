@@ -45,7 +45,7 @@ async def import_file(
     raw = await file.read()
     try:
         if ext == "csv":
-            rows = parse_csv(io.StringIO(raw.decode("utf-8-sig")))
+            rows = parse_csv(io.StringIO(decode_csv_bytes(raw)))
         else:
             rows = parse_pdf(io.BytesIO(raw))
     except Exception as exc:
@@ -97,7 +97,7 @@ async def import_from_path(
                 raw = f.read()
             file_hash = hashlib.sha256(raw).hexdigest()
             if ext == "csv":
-                rows = parse_csv(io.StringIO(raw.decode("utf-8-sig")))
+                rows = parse_csv(io.StringIO(decode_csv_bytes(raw)))
             else:
                 rows = parse_pdf(io.BytesIO(raw))
             log = ImportService.run(
