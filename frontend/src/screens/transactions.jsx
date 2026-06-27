@@ -83,7 +83,15 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
   const [toast, showToast] = useToast();
   const pageSize = 11;
 
-  useEffect(() => { if (initialFilter && initialFilter.needsReview) setNeedsReview(true); }, [initialFilter]);
+  // Apply filters passed in via navigation (e.g. drilling in from Cash Flow) so the
+  // same category + period the user was viewing is reflected here.
+  useEffect(() => {
+    if (!initialFilter) return;
+    if (initialFilter.needsReview) setNeedsReview(true);
+    if (initialFilter.category) setFCat(initialFilter.category);
+    if (initialFilter.month) setFRange('m:' + initialFilter.month);
+    else if (initialFilter.category) setFRange('365'); // yearly drill -> trailing 12 months
+  }, [initialFilter]);
   const reviewCount = tx.filter(t => t.needs_review).length;
   useEffect(() => { registerSetReview && registerSetReview(reviewCount); }, [reviewCount]);
 
@@ -193,7 +201,10 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
           fRange === '30' ? 'Last 30 days' :
           fRange === '90' ? 'Last 90 days' :
           fRange === '365' ? 'Last 12 months' :
-          (last6Months.find(m => m.value === fRange)?.label ?? 'Period')
+          (last6Months.find(m => m.value === fRange)?.label ??
+            (fRange.startsWith('m:')
+              ? (() => { const [y, mo] = fRange.slice(2).split('-'); return new Date(+y, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }); })()
+              : 'Period'))
         }>
           {[['30', 'Last 30 days'], ['90', 'Last 90 days'], ['365', 'Last 12 months'], ['all', 'All time']].map(([v, l]) =>
             <DDItem key={v} on={fRange === v} onClick={() => setFRange(v)}>{l}</DDItem>)}

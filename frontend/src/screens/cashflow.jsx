@@ -416,7 +416,7 @@ export function CashFlowScreen({ go, currency, household }) {
         )}
       </section>
 
-      {drill && <DrillModal catId={drill} currency={currency} household={household} onClose={() => setDrill(null)} go={go} rows={drillTxs} loading={drillLoading} />}
+      {drill && <DrillModal catId={drill} currency={currency} household={household} onClose={() => setDrill(null)} go={go} rows={drillTxs} loading={drillLoading} month={view === 'monthly' ? monthSel : null} />}
     </div>
   );
 }
@@ -435,7 +435,7 @@ function KpiCard({ label, val, accent, icon, delta, deltaGood, sub }) {
   );
 }
 
-function DrillModal({ catId, currency, household, onClose, go, rows, loading }) {
+function DrillModal({ catId, currency, household, onClose, go, rows, loading, month }) {
   const total = rows.reduce((s, t) => s + Math.abs(t.amount_base ?? t.amount), 0);
   return (
     <div className="scrim" onClick={onClose}>
@@ -455,7 +455,7 @@ function DrillModal({ catId, currency, household, onClose, go, rows, loading }) 
             </div>
           ))}
         </div>
-        <button className="btn ghost" style={{ marginTop: 16, width: '100%', justifyContent: 'center' }} onClick={() => { onClose(); go('transactions', { category: catId }); }}>Open in Transactions <Icon n="arrowR" s={14} /></button>
+        <button className="btn ghost" style={{ marginTop: 16, width: '100%', justifyContent: 'center' }} onClick={() => { onClose(); go('transactions', { category: catId, month: month || undefined }); }}>Open in Transactions <Icon n="arrowR" s={14} /></button>
       </div>
     </div>
   );
