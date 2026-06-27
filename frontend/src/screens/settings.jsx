@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal } from '../lib/api.ts';
+import { getSettings, updateSettings, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, clearAllImportLogs } from '../lib/api.ts';
 import { saveCache, loadCache, clearAllCache } from '../lib/cache.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
@@ -65,7 +65,27 @@ function ImportTab() {
     }).catch(() => {});
   }, []);
 
+  const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+
   const loadHistory = () => getImportLogs().then(data => { saveCache('import_logs', data); setHistory(data); }).catch(() => {});
+
+  const handleClearAll = async () => {
+    if (!confirmClear) { setConfirmClear(true); return; }
+    setClearing(true);
+    setConfirmClear(false);
+    try {
+      await clearAllTransactions();
+      await clearAllImportLogs();
+      clearAllCache();
+      setHistory([]);
+      showToast('All imported data cleared', 'check');
+    } catch (err) {
+      showToast('Clear failed: ' + (err.message || 'unknown error'), 'x');
+    } finally {
+      setClearing(false);
+    }
+  };
   useEffect(() => { loadHistory(); }, []);
 
   const afterImport = (log) => {
@@ -221,7 +241,20 @@ function ImportTab() {
 
       {/* HISTORY */}
       <section className="card">
-        <div className="card-h"><div className="t"><b>Import history</b></div></div>
+        <div className="card-h">
+          <div className="t"><b>Import history</b></div>
+          {history.length > 0 && (
+            <button
+              className={'btn sm ' + (confirmClear ? 'neg' : 'ghost')}
+              style={{ marginLeft: 'auto' }}
+              disabled={clearing}
+              onClick={handleClearAll}
+              onBlur={() => setConfirmClear(false)}
+            >
+              {clearing ? 'Clearing…' : confirmClear ? 'Confirm — delete everything?' : 'Clear all data'}
+            </button>
+          )}
+        </div>
         <div className="tbl-wrap" style={{ border: 'none' }}>
           <table className="tbl">
             <thead><tr><th>File</th><th>Account</th><th>Date</th><th className="r">Rows</th><th className="c">Status</th></tr></thead>

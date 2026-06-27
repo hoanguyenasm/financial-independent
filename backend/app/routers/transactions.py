@@ -65,6 +65,12 @@ def update_transaction(tx_id: int, payload: TransactionUpdate, db: Session = Dep
     return tx
 
 
+@router.delete("", status_code=204)
+def delete_all_transactions(db: Session = Depends(get_db)):
+    db.query(Transaction).delete()
+    db.commit()
+
+
 @router.delete("/{tx_id}", status_code=204)
 def delete_transaction(tx_id: int, db: Session = Depends(get_db)):
     tx = db.get(Transaction, tx_id)

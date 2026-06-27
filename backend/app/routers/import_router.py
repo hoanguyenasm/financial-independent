@@ -198,3 +198,9 @@ def list_import_logs(
     if account_id is not None:
         q = q.filter(ImportLog.account_id == account_id)
     return q.order_by(ImportLog.imported_at.desc()).all()
+
+
+@router.delete("/logs", status_code=204)
+def delete_all_import_logs(db: Session = Depends(get_db)):
+    db.query(ImportLog).delete()
+    db.commit()

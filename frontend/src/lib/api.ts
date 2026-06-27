@@ -234,3 +234,9 @@ export const captureNWSnapshot = () =>
 
 export const getNWSnapshots = (limit = 24) =>
   api<NWSnapshotRead[]>(`/nw-snapshots?limit=${limit}`)
+
+export const clearAllTransactions = () =>
+  api<void>('/transactions', { method: 'DELETE' })
+
+export const clearAllImportLogs = () =>
+  api<void>('/import/logs', { method: 'DELETE' })
