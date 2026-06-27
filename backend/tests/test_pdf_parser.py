@@ -126,6 +126,36 @@ def test_parse_revolut_uses_balance_delta():
     assert rows[1].amount == -95.0   # balance went down: expense
 
 
+def test_parse_revolut_consolidated_eur_and_foreign():
+    from app.parsers.pdf_parser import (
+        _looks_like_revolut_consolidated,
+        _parse_revolut_consolidated,
+    )
+    lines = [
+        "Custom Statement",
+        "Current Accounts Transaction Statements",
+        "Personal Account (EUR)",
+        "Transaction statement",
+        "Date Description Category Balance Fees",
+        "May 4, 2026 From Instant Access Savings Others €160.00 €330.00 €0.00 €0.00 €0.00",
+        "May 4, 2026 Transfer to BAO NGOC PHAM Others -€425.00 €5.00 €0.00 €0.00 €0.00",
+        "May 9, 2026 Tesla Merchant -€7.45 €47.55 €0.00 €0.00 €0.00",
+        "Personal Account (VND)",
+        "Transaction statement",
+        "May 2, 2026 Netflix Merchant -114,000 2,339,269 0 VND 0 VND 0 VND",
+        "VND VND €0.00 €0.00 €0.00",
+        "-€3.69 €75.80",
+    ]
+    assert _looks_like_revolut_consolidated(lines)
+    rows = _parse_revolut_consolidated(lines)
+    assert len(rows) == 4
+    assert (rows[0].description, rows[0].amount) == ("From Instant Access Savings", 160.00)
+    assert (rows[1].description, rows[1].amount) == ("Transfer to BAO NGOC PHAM", -425.00)
+    assert (rows[2].description, rows[2].amount) == ("Tesla", -7.45)
+    # foreign pocket normalized to its EUR equivalent
+    assert (rows[3].description, rows[3].amount, rows[3].currency) == ("Netflix", -3.69, "EUR")
+
+
 def test_parse_scalable_signs():
     lines = [
         "Scalable Capital Bank GmbH",

@@ -64,6 +64,14 @@ def _looks_like_revolut(lines: list[str]) -> bool:
     return "Revolut" in header or ("Geldausgang" in header and "Geldeingang" in header)
 
 
+def _looks_like_revolut_consolidated(lines: list[str]) -> bool:
+    """English Revolut 'Custom/Consolidated Statement' with per-currency pockets."""
+    blob = "\n".join(lines[:80])
+    return "Custom Statement" in blob and (
+        "Current Accounts" in blob or "Transaction statement" in "\n".join(lines)
+    )
+
+
 def _looks_like_scalable(lines: list[str]) -> bool:
     header = "\n".join(lines[:20])
     return "Scalable" in header or (
@@ -242,6 +250,104 @@ _REV_TX = re.compile(
 _REV_SKIP = re.compile(r"^(An:|Von:|Karte:|Ref\.:|IBAN:|\d{2}\.\d{2}\.\d{4} -)", re.IGNORECASE)
 
 
+_REVC_MONTHS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+_REVC_DATE = re.compile(r"^([A-Z][a-z]{2}) (\d{1,2}), (20\d{2})\s+(.*)$")
+_REVC_EURNUM = re.compile(r"(-?)€([\d,]+\.\d{2})")
+_REVC_LEAD_EUR = re.compile(r"^(-?)€([\d,]+\.\d{2})\b")
+_REVC_CATEGORIES = (
+    "Card payment", "Top up", "Exchange", "Transfer", "Cashback",
+    "Merchant", "Refund", "Others", "Other", "Fee", "ATM",
+)
+
+
+def _revc_amount(sign: str, num: str) -> float:
+    return float(num.replace(",", "")) * (-1 if sign == "-" else 1)
+
+
+def _revc_strip_category(text: str) -> str:
+    """A row's leading text is '<description> <Category>'; drop the category word."""
+    for cat in sorted(_REVC_CATEGORIES, key=len, reverse=True):
+        if text.endswith(" " + cat):
+            return text[: -len(cat)].strip()
+    return text.rsplit(" ", 1)[0].strip() if " " in text else text
+
+
+def _parse_revolut_consolidated(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
+    """
+    Revolut English consolidated statement, one section per currency pocket:
+        "Personal Account (EUR)" … then rows:
+        <Mon DD, YYYY> <description> <Category> <±€amount> <€balance> <€…> <€…> <€…>
+
+    Foreign pockets (VND, CZK, …) list native amounts on the date line and the
+    EUR equivalent on a following line; we take the EUR figure so everything is
+    normalized to the tracker's base currency.
+    """
+    rows: list[ParsedRow] = []
+    pocket: str | None = None
+    i, n = 0, len(lines)
+    while i < n:
+        line = lines[i].strip()
+        m_pocket = re.match(r"Personal Account \(([A-Z]{3})\)", line)
+        if m_pocket:
+            pocket = m_pocket.group(1)
+            i += 1
+            continue
+
+        m_date = _REVC_DATE.match(line)
+        if not m_date:
+            i += 1
+            continue
+        month = _REVC_MONTHS.get(m_date.group(1).lower())
+        if not month:
+            i += 1
+            continue
+        day, year, rest = int(m_date.group(2)), int(m_date.group(3)), m_date.group(4)
+
+        if pocket in (None, "EUR"):
+            m_amt = _REVC_EURNUM.search(rest)
+            if not m_amt:
+                i += 1
+                continue
+            amount = _revc_amount(m_amt.group(1), m_amt.group(2))
+            head = rest[: m_amt.start()].rstrip().rstrip("-").strip()
+            desc = _revc_strip_category(head)
+            if desc:
+                try:
+                    rows.append(ParsedRow(date=date(year, month, day), description=desc,
+                                          amount=amount, currency=currency))
+                except ValueError:
+                    pass
+            i += 1
+            continue
+
+        # Foreign pocket: description before the first native number, EUR equiv on a later line.
+        m_num = re.search(r"\s(-?[\d,]+)\s", rest)
+        head = rest[: m_num.start()].strip() if m_num else rest
+        desc = _revc_strip_category(head)
+        eur_amount: float | None = None
+        for j in range(i + 1, min(i + 4, n)):
+            lj = lines[j].strip()
+            m_eur = _REVC_LEAD_EUR.match(lj)
+            if m_eur:
+                eur_amount = _revc_amount(m_eur.group(1), m_eur.group(2))
+                break
+            m_cont = re.match(r"^([A-Za-z][\w ]*?)\s+[A-Z]{3}\s+[A-Z]{3}\b", lj)
+            if m_cont:
+                desc = (desc + " " + m_cont.group(1).strip()).strip()
+        if eur_amount is not None and desc:
+            try:
+                rows.append(ParsedRow(date=date(year, month, day), description=desc,
+                                      amount=eur_amount, currency=currency))
+            except ValueError:
+                pass
+        i += 1
+
+    return rows
+
+
 def _parse_revolut(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
     """
     Revolut German: DD.MM.YYYY description AMOUNT€ BALANCE€
@@ -358,6 +464,12 @@ def _parse_amex(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
 
 def parse_pdf(file: BinaryIO, default_currency: str = "EUR") -> list[ParsedRow]:
     raw = file.read()
+    lines = _extract_text_lines(io.BytesIO(raw))
+
+    # The Revolut consolidated statement has a per-pocket text layout that pdfplumber's
+    # table extraction mangles, so detect and parse it from text before trying tables.
+    if lines and _looks_like_revolut_consolidated(lines):
+        return _parse_revolut_consolidated(lines, default_currency)
 
     # Try table extraction first
     rows: list[ParsedRow] = []
@@ -373,7 +485,6 @@ def parse_pdf(file: BinaryIO, default_currency: str = "EUR") -> list[ParsedRow]:
         return rows
 
     # Text-based fallback
-    lines = _extract_text_lines(io.BytesIO(raw))
     if not lines:
         return []
 
@@ -394,7 +505,7 @@ def parse_pdf(file: BinaryIO, default_currency: str = "EUR") -> list[ParsedRow]:
 def detect_bank_from_lines(lines: list[str]) -> str | None:
     if _looks_like_trade_republic(lines):
         return "trade_republic"
-    if _looks_like_revolut(lines):
+    if _looks_like_revolut_consolidated(lines) or _looks_like_revolut(lines):
         return "revolut"
     if _looks_like_scalable(lines):
         return "scalable"

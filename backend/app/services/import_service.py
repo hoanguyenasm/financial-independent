@@ -21,6 +21,7 @@ _TRANSFER_KW = {
     "ueberweisung", "umbuchung", "uebertrag", "transfer", "zahlungseingang", "zahlungsausgang",
     "incoming transfer", "outgoing transfer",
     "von eur flexible", "an eur flexible",   # Revolut money market
+    "instant access savings",                 # Revolut savings vault ↔ current account
     "umgetauscht", "waehrungswechsel",        # FX conversion
     "abhebung vom geldkonto",                 # Scalable withdrawal
 }
