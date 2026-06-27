@@ -283,7 +283,7 @@ export function AccountsScreen({ go, currency, household }) {
               </tr>
             </thead>
             <tbody>
-              {groups.map(g => (
+              {groups.filter(g => g.items.length > 0).map(g => (
                 <React.Fragment key={g.key}>
                   <tr><td colSpan="7" style={{ height: 34, background: 'var(--bg-soft)' }}>
                     <span className="row" style={{ gap: 8 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: `var(--c-${g.key})` }} /><b className="kpi-sub" style={{ color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '.06em', fontSize: 11 }}>{g.label}</b></span>
@@ -318,12 +318,13 @@ export function AccountsScreen({ go, currency, household }) {
                             onClick={async () => {
                               if (!confirming) { setConfirmDeleteId(a.id); return; }
                               setConfirmDeleteId(null);
-                              try {
-                                await deleteAsset(a.id);
-                                const updated = liveAssets.filter(x => x.id !== a.id);
-                                setLiveAssets(updated);
-                                saveCache('assets', updated);
-                              } catch {}
+                              // Optimistically remove from the UI + cache so the row
+                              // disappears immediately, even when the backend is offline
+                              // or we're on mock data. Fire the delete in the background.
+                              const updated = liveAssets.filter(x => x.id !== a.id);
+                              setLiveAssets(updated);
+                              saveCache('assets', updated);
+                              try { await deleteAsset(a.id); } catch {}
                             }}
                           >
                             {confirming ? 'Delete?' : <Icon n="x" s={13} />}

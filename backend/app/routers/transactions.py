@@ -1,11 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
+from datetime import date
+import calendar
 from app.database import get_db
 from app.models import Transaction
 from app.schemas import TransactionCreate, TransactionRead, TransactionUpdate
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+def _months_ago(d: date, months: int) -> date:
+    total = d.year * 12 + (d.month - 1) - months
+    return date(total // 12, total % 12 + 1, 1)
 
 
 @router.get("/needs-review-count")
@@ -29,6 +36,8 @@ def list_transactions(
     user_id: Optional[int] = None,
     category: Optional[str] = None,
     needs_review: Optional[bool] = None,
+    month: Optional[str] = Query(default=None, description="Single calendar month YYYY-MM"),
+    months: Optional[int] = Query(default=None, ge=1, le=60, description="Trailing window in months"),
     skip: int = 0,
     limit: int = Query(default=100, le=500),
     db: Session = Depends(get_db),
@@ -42,6 +51,14 @@ def list_transactions(
         q = q.filter(Transaction.category == category)
     if needs_review is not None:
         q = q.filter(Transaction.needs_review == needs_review)
+    if month:
+        y, m = (int(p) for p in month.split("-"))
+        q = q.filter(
+            Transaction.date >= date(y, m, 1),
+            Transaction.date <= date(y, m, calendar.monthrange(y, m)[1]),
+        )
+    elif months:
+        q = q.filter(Transaction.date >= _months_ago(date.today(), months - 1))
     return q.order_by(Transaction.date.desc()).offset(skip).limit(limit).all()
 
 

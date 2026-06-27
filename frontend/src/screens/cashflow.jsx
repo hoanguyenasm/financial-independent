@@ -7,7 +7,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Dropdown, DDItem, Donut, CashBars } from '../ui.jsx';
-import { getCashflowMonthly, getCategoryExpenses, getTransactions } from '../lib/api.ts';
+import { getCashflowMonthly, getCategoryExpenses, getCategoryIncome, getCategoryInvestments, getTransactions } from '../lib/api.ts';
 import { saveCache, loadCache } from '../lib/cache.ts';
 
 export function CashFlowScreen({ go, currency, household }) {
@@ -26,6 +26,8 @@ export function CashFlowScreen({ go, currency, household }) {
   const _cachedCf = loadCache('cashflow');
   const [cf, setCf] = useState(() => _cachedCf ? _adaptCf(_cachedCf) : DATA.CASHFLOW);
   const [liveCatExp, setLiveCatExp] = useState(() => loadCache('cat_expenses'));
+  const [liveCatInc, setLiveCatInc] = useState(() => loadCache('cat_income'));
+  const [liveCatInv, setLiveCatInv] = useState(() => loadCache('cat_invest'));
   const [monthSel, setMonthSel] = useState(null);   // 'YYYY-MM' for monthly view
   const [drillTxs, setDrillTxs] = useState([]);
   const [drillLoading, setDrillLoading] = useState(false);
@@ -48,22 +50,31 @@ export function CashFlowScreen({ go, currency, household }) {
       .catch(() => {});
   }, []);
 
-  // Fetch the category breakdown for exactly the period being shown.
+  // Fetch the category breakdowns (expense / income / investment) for exactly the
+  // period being shown, so every donut on this screen reflects the same window.
   useEffect(() => {
     if (view === 'monthly' && !monthSel) return;
     const opts = view === 'yearly' ? 12 : { month: monthSel };
     getCategoryExpenses(opts)
       .then(data => { saveCache('cat_expenses', data); setLiveCatExp(data); })
       .catch(() => {});
+    getCategoryIncome(opts)
+      .then(data => { saveCache('cat_income', data); setLiveCatInc(data); })
+      .catch(() => {});
+    getCategoryInvestments(opts)
+      .then(data => { saveCache('cat_invest', data); setLiveCatInv(data); })
+      .catch(() => {});
   }, [view, monthSel]);
 
   useEffect(() => {
     if (!drill) { setDrillTxs([]); return; }
     setDrillLoading(true);
-    getTransactions(12, drill)
+    // Scope the drill-down to exactly the period the breakdown is showing.
+    const period = view === 'yearly' ? { months: 12 } : { month: monthSel };
+    getTransactions(500, drill, period)
       .then(data => { setDrillTxs(data); setDrillLoading(false); })
       .catch(() => { setDrillTxs([]); setDrillLoading(false); });
-  }, [drill]);
+  }, [drill, view, monthSel]);
 
   const selEntry = useMemo(() => cf.find(m => m.key === monthSel) ?? null, [cf, monthSel]);
   const periodLabel = view === 'yearly'
@@ -72,7 +83,6 @@ export function CashFlowScreen({ go, currency, household }) {
   const periodInc = view === 'monthly'
     ? (selEntry?.income ?? 0)
     : cf.reduce((s, m) => s + m.income, 0);
-  const periodInv = DATA.INVEST_TOTAL * (view === 'yearly' ? 12 : 1);
 
   const groups = useMemo(() => {
     const GROUP_COLORS = Object.fromEntries(DATA.EXPENSE_GROUPS.map(g => [g.group, g.color]));
@@ -103,9 +113,56 @@ export function CashFlowScreen({ go, currency, household }) {
   const expTotal = useMemo(() => groups.reduce((s, g) => s + g.total, 0), [groups]);
   const periodExp = expTotal;
   const invScale = view === 'yearly' ? 12 : 1;
+
+  // Income sources for the period. Live data (income-by-category) sums to the same
+  // window as the Income KPI; otherwise fall back to the mock breakdown.
+  const incomeGroups = useMemo(() => {
+    const catMap = Object.fromEntries(DATA.CATEGORIES.map(c => [c.id, c]));
+    if (liveCatInc && liveCatInc.length) {
+      return liveCatInc.map(({ category, total_base, txn_count }) => {
+        const cat = catMap[category];
+        return { id: category, name: cat?.name ?? category, amount: total_base, color: cat?.color ?? '#86EFAC', txns: txn_count };
+      }).sort((a, b) => b.amount - a.amount);
+    }
+    return DATA.INCOME_SUBS.map(s => ({ ...s, txns: s.txns ?? 0 }));
+  }, [liveCatInc]);
+  const incomeTotal = useMemo(() => incomeGroups.reduce((s, g) => s + g.amount, 0), [incomeGroups]);
+
+  // Money put to work this period (investment buys), by category. Live data is already
+  // scoped to the period; the mock fallback is monthly, so scale it for the yearly view.
+  const investLive = !!(liveCatInv && liveCatInv.length);
+  const investGroups = useMemo(() => {
+    const catMap = Object.fromEntries(DATA.CATEGORIES.map(c => [c.id, c]));
+    if (investLive) {
+      return liveCatInv.map(({ category, total_base, txn_count }) => {
+        const cat = catMap[category];
+        return {
+          id: category, name: cat?.name ?? category, amount: total_base,
+          color: cat?.color ?? 'var(--accent)',
+          note: `${txn_count} ${txn_count === 1 ? 'transaction' : 'transactions'}`,
+          txns: txn_count,
+        };
+      }).sort((a, b) => b.amount - a.amount);
+    }
+    return DATA.INVEST_SUBS.map(s => ({ ...s, amount: s.amount * invScale }));
+  }, [investLive, liveCatInv, invScale]);
+  const periodInv = useMemo(() => investGroups.reduce((s, g) => s + g.amount, 0), [investGroups]);
+
   const netSaved = periodInc - periodExp;
   const savingsRate = periodInc > 0 ? Math.round(netSaved / periodInc * 100) : 0;
   const maxGroup = Math.max(...groups.map(g => g.total));
+
+  // "vs last period" deltas — month-over-month in monthly view. Yearly view has no
+  // prior 12-month window in the fetched data, so we leave the delta off there.
+  const cfIdx = useMemo(() => cf.findIndex(m => m.key === monthSel), [cf, monthSel]);
+  const fmtDelta = (pct) => {
+    if (pct == null || !isFinite(pct)) return null;
+    return (pct >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1) + '%';
+  };
+  const incDelta = view === 'monthly' && cfIdx > 0 && cf[cfIdx - 1].income > 0
+    ? (cf[cfIdx].income - cf[cfIdx - 1].income) / cf[cfIdx - 1].income * 100 : null;
+  const expDelta = view === 'monthly' && cfIdx > 0 && cf[cfIdx - 1].expense > 0
+    ? (cf[cfIdx].expense - cf[cfIdx - 1].expense) / cf[cfIdx - 1].expense * 100 : null;
 
   const toggle = (id) => setExpanded(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const expandAll = () => setExpanded(new Set(groups.map(g => g.group)));
@@ -145,9 +202,9 @@ export function CashFlowScreen({ go, currency, household }) {
 
       {/* KPI ROW */}
       <div className="gridcols-4" style={{ marginBottom: 18 }}>
-        <KpiCard label={view === 'monthly' ? 'Income' : 'Income · 12 mo'} val={M(periodInc)} accent="var(--pos)" icon="cashflow" delta="+6.4%" />
-        <KpiCard label={view === 'monthly' ? 'Expenses' : 'Expenses · 12 mo'} val={M(periodExp)} accent="var(--neg)" icon="wallet" delta="−2.1%" deltaPos />
-        <KpiCard label="Invested" val={M(periodInv)} accent="var(--accent)" icon="trend" sub="ETF · Trading · Gold · Crypto" />
+        <KpiCard label={view === 'monthly' ? 'Income' : 'Income · 12 mo'} val={M(periodInc)} accent="var(--pos)" icon="cashflow" delta={fmtDelta(incDelta)} deltaGood={incDelta >= 0} />
+        <KpiCard label={view === 'monthly' ? 'Expenses' : 'Expenses · 12 mo'} val={M(periodExp)} accent="var(--neg)" icon="wallet" delta={fmtDelta(expDelta)} deltaGood={expDelta <= 0} />
+        <KpiCard label="Invested" val={M(periodInv)} accent="var(--accent)" icon="trend" sub={investGroups.length ? investGroups.slice(0, 4).map(g => g.name).join(' · ') : 'No buys this period'} />
         <KpiCard label="Net saved" val={M(netSaved)} accent="var(--c-realestate)" icon="bolt" sub={savingsRate + '% savings rate'} />
       </div>
 
@@ -162,6 +219,54 @@ export function CashFlowScreen({ go, currency, household }) {
         </div>
         <CashBars data={cf} h={232} />
       </section>
+
+      {/* INCOME SOURCES (donut + breakdown) */}
+      <div className="grid" style={{ gridTemplateColumns: '340px 1fr', marginBottom: 18 }}>
+        <section className="card">
+          <div className="card-h"><div className="t"><b>Where it comes from</b></div></div>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 16px' }}>
+            <Donut segments={incomeGroups.map(g => ({ value: g.amount, color: g.color, label: g.name }))} size={184} stroke={26}
+              center={<><div className="num" style={{ fontSize: 24, fontWeight: 800 }}>{MC(incomeTotal)}</div><div className="kpi-sub">{view === 'monthly' ? (selEntry ? `${selEntry.label} ${selEntry.year}` : 'month') : '12 months'}</div></>} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+            {incomeGroups.map(g => (
+              <div key={g.id} className="legend-row clickable" style={{ justifyContent: 'space-between' }} onClick={() => setDrill(g.id)}>
+                <span className="legend-row"><i style={{ background: g.color }} />{g.name}</span>
+                <span className="mono" style={{ fontWeight: 700 }}>{incomeTotal > 0 ? Math.round(g.amount / incomeTotal * 100) : 0}%</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="card-h"><div className="t"><b>Income by source</b></div><span className="kpi-sub" style={{ marginLeft: 'auto' }}>Click a source to drill into transactions</span></div>
+          <div>
+            {incomeGroups.map((g, i) => {
+              const maxInc = Math.max(...incomeGroups.map(x => x.amount), 1);
+              return (
+                <div key={g.id} className="clickable" onClick={() => setDrill(g.id)}
+                  style={{ display: 'grid', gridTemplateColumns: '20px 1fr 120px 110px 18px', alignItems: 'center', gap: 12, padding: '12px 4px', borderBottom: i < incomeGroups.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: g.color }} />
+                  <div>
+                    <div className="row" style={{ gap: 8, marginBottom: 7 }}>
+                      <b style={{ fontSize: 14 }}>{g.name}</b>
+                      <span className="fx">{g.txns} txns</span>
+                    </div>
+                    <div className="bar" style={{ height: 6 }}><i style={{ width: (g.amount / maxInc * 100) + '%', background: g.color, boxShadow: 'none' }} /></div>
+                  </div>
+                  <span className="mono" style={{ textAlign: 'right', color: 'var(--text-3)', fontSize: 12.5 }}>{incomeTotal > 0 ? Math.round(g.amount / incomeTotal * 100) : 0}%</span>
+                  <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 15 }}>{M(g.amount)}</span>
+                  <Icon n="chevR" s={13} c="var(--text-3)" />
+                </div>
+              );
+            })}
+            <div className="spread" style={{ padding: '16px 4px 2px' }}>
+              <b style={{ fontSize: 14 }}>Total income</b>
+              <span className="num" style={{ fontSize: 20, fontWeight: 800, color: 'var(--pos)' }}>{M(incomeTotal)}</span>
+            </div>
+          </div>
+        </section>
+      </div>
 
       {/* EXPENSE GROUPS (expandable) + DONUT */}
       <div className="grid" style={{ gridTemplateColumns: '340px 1fr', marginBottom: 18 }}>
@@ -259,19 +364,22 @@ export function CashFlowScreen({ go, currency, household }) {
           <div className="t"><b>Investment overview</b> · money put to work {view === 'monthly' ? 'this month' : 'this year'}</div>
           <span className="tag accent" style={{ marginLeft: 'auto' }}>Savings, not spending</span>
         </div>
+        {investGroups.length === 0 ? (
+          <div className="kpi-sub" style={{ padding: '24px 4px' }}>No investment buys recorded for this period.</div>
+        ) : (
         <div className="grid" style={{ gridTemplateColumns: '280px 1fr', alignItems: 'center' }}>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <Donut segments={DATA.INVEST_SUBS.map(s => ({ value: s.amount, color: s.color, label: s.name }))} size={168} stroke={24}
+            <Donut segments={investGroups.map(s => ({ value: s.amount, color: s.color, label: s.name }))} size={168} stroke={24}
               center={<><div className="num" style={{ fontSize: 22, fontWeight: 800 }}>{MC(periodInv)}</div><div className="kpi-sub">invested</div></>} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {DATA.INVEST_SUBS.map((s, i) => (
+            {investGroups.map((s, i) => (
               <div key={s.id} className="clickable" onClick={() => setDrill(s.id)}
-                style={{ display: 'grid', gridTemplateColumns: '20px 1fr 140px 110px 18px', alignItems: 'center', gap: 12, padding: '11px 6px', borderBottom: i < DATA.INVEST_SUBS.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                style={{ display: 'grid', gridTemplateColumns: '20px 1fr 140px 110px 18px', alignItems: 'center', gap: 12, padding: '11px 6px', borderBottom: i < investGroups.length - 1 ? '1px solid var(--border)' : 'none' }}>
                 <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color }} />
                 <div><b style={{ fontSize: 13.5 }}>{s.name}</b><div className="fx">{s.note}</div></div>
-                <div className="bar" style={{ height: 6 }}><i style={{ width: (s.amount / DATA.INVEST_SUBS[0].amount * 100) + '%', background: s.color, boxShadow: 'none' }} /></div>
-                <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{M(s.amount * invScale)}</span>
+                <div className="bar" style={{ height: 6 }}><i style={{ width: (s.amount / investGroups[0].amount * 100) + '%', background: s.color, boxShadow: 'none' }} /></div>
+                <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{M(s.amount)}</span>
                 <Icon n="chevR" s={13} c="var(--text-3)" />
               </div>
             ))}
@@ -281,6 +389,7 @@ export function CashFlowScreen({ go, currency, household }) {
             </div>
           </div>
         </div>
+        )}
       </section>
 
       {/* TREND */}
@@ -298,7 +407,7 @@ export function CashFlowScreen({ go, currency, household }) {
   );
 }
 
-function KpiCard({ label, val, accent, icon, delta, deltaPos, sub }) {
+function KpiCard({ label, val, accent, icon, delta, deltaGood, sub }) {
   return (
     <div className="card tight">
       <div className="spread">
@@ -306,7 +415,7 @@ function KpiCard({ label, val, accent, icon, delta, deltaPos, sub }) {
         <span style={{ width: 30, height: 30, borderRadius: 9, background: 'color-mix(in srgb,' + accent + ' 16%, transparent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon n={icon} s={16} c={accent} /></span>
       </div>
       <div className="num" style={{ fontSize: 28, fontWeight: 800, marginTop: 12 }}>{val}</div>
-      {delta && <div className={'delta ' + (deltaPos ? 'pos' : delta[0] === '−' ? 'neg' : 'pos')} style={{ marginTop: 6 }}>{delta} vs last period</div>}
+      {delta && <div className={'delta ' + (deltaGood ? 'pos' : 'neg')} style={{ marginTop: 6 }}>{delta} vs last period</div>}
       {sub && <div className="kpi-sub" style={{ marginTop: 6 }}>{sub}</div>}
     </div>
   );

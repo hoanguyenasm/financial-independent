@@ -53,15 +53,13 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
     return result
 
 
-@router.get("/expense-by-category")
-def expense_by_category(
-    months: int = Query(default=12, ge=1, le=60),
-    month: Optional[str] = Query(default=None, description="Single calendar month YYYY-MM"),
-    db: Session = Depends(get_db),
-):
+def _by_category(db: Session, types: set[str], months: int, month: Optional[str]):
+    """Aggregate transactions of the given types into per-category totals (abs base
+    amount) and counts, for either a single calendar month or a trailing window.
+    Internal movements (category "transfer") are always excluded."""
     q = db.query(Transaction).filter(
-        Transaction.type.in_(EXPENSE_TYPES),
-        Transaction.category != "transfer",  # exclude internal movements
+        Transaction.type.in_(types),
+        Transaction.category != "transfer",
     )
     if month:
         y, m = (int(p) for p in month.split("-"))
@@ -71,10 +69,9 @@ def expense_by_category(
         )
     else:
         q = q.filter(Transaction.date >= _months_ago(date.today(), months - 1))
-    txs = q.all()
     totals: dict[str, float] = defaultdict(float)
     counts: dict[str, int] = defaultdict(int)
-    for tx in txs:
+    for tx in q.all():
         cat = tx.category or "uncategorized"
         totals[cat] += abs(_base_amount(tx))
         counts[cat] += 1
@@ -82,6 +79,34 @@ def expense_by_category(
         {"category": cat, "total_base": round(totals[cat], 2), "txn_count": counts[cat]}
         for cat in sorted(totals, key=lambda c: totals[c], reverse=True)
     ]
+
+
+@router.get("/expense-by-category")
+def expense_by_category(
+    months: int = Query(default=12, ge=1, le=60),
+    month: Optional[str] = Query(default=None, description="Single calendar month YYYY-MM"),
+    db: Session = Depends(get_db),
+):
+    return _by_category(db, EXPENSE_TYPES, months, month)
+
+
+@router.get("/income-by-category")
+def income_by_category(
+    months: int = Query(default=12, ge=1, le=60),
+    month: Optional[str] = Query(default=None, description="Single calendar month YYYY-MM"),
+    db: Session = Depends(get_db),
+):
+    return _by_category(db, INCOME_TYPES, months, month)
+
+
+@router.get("/investment-by-category")
+def investment_by_category(
+    months: int = Query(default=12, ge=1, le=60),
+    month: Optional[str] = Query(default=None, description="Single calendar month YYYY-MM"),
+    db: Session = Depends(get_db),
+):
+    # Only buys = "money put to work" this period. Sells are an inflow, not a deployment.
+    return _by_category(db, {"investment_buy"}, months, month)
 
 
 @router.get("/summary")

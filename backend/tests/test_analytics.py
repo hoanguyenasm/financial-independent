@@ -1,6 +1,12 @@
 from datetime import date
 
 
+def _months_ago_str(months: int) -> str:
+    today = date.today()
+    total = today.year * 12 + (today.month - 1) - months
+    return date(total // 12, total % 12 + 1, 1).strftime("%Y-%m")
+
+
 def _setup(client):
     user = client.post("/users", json={"name": "Hoa", "email": "hoa@example.com"}).json()
     account = client.post("/accounts", json={"name": "Giro", "type": "checking", "currency": "EUR"}).json()
@@ -112,6 +118,70 @@ def test_expense_by_category(client):
     assert cats["supermarket"]["total_base"] == 600.0
     assert cats["supermarket"]["txn_count"] == 2
     assert "salary" not in cats
+
+
+def test_income_by_category(client):
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    _tx(client, user_id, account_id, f"{m}-01", 5000.0, "income", "salary")
+    _tx(client, user_id, account_id, f"{m}-02", 2100.0, "income", "rental")
+    _tx(client, user_id, account_id, f"{m}-03", 2100.0, "income", "rental")
+    _tx(client, user_id, account_id, f"{m}-04", 150.0, "dividend", "dividend")
+    _tx(client, user_id, account_id, f"{m}-05", -300.0, "expense", "supermarket")  # excluded
+
+    response = client.get("/analytics/income-by-category?months=12")
+    assert response.status_code == 200
+    cats = {r["category"]: r for r in response.json()}
+    assert cats["salary"]["total_base"] == 5000.0
+    assert cats["rental"]["total_base"] == 4200.0
+    assert cats["rental"]["txn_count"] == 2
+    assert cats["dividend"]["total_base"] == 150.0
+    assert "supermarket" not in cats
+
+
+def test_income_by_category_excludes_transfer(client):
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    _tx(client, user_id, account_id, f"{m}-01", 4000.0, "income", "salary")
+    _tx(client, user_id, account_id, f"{m}-02", 9000.0, "income", "transfer")  # internal
+    cats = {r["category"]: r for r in client.get("/analytics/income-by-category").json()}
+    assert "transfer" not in cats
+    assert cats["salary"]["total_base"] == 4000.0
+
+
+def test_investment_by_category(client):
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    # investment buys are stored negative (money leaving the cash account)
+    _tx(client, user_id, account_id, f"{m}-01", -600.0, "investment_buy", "etf")
+    _tx(client, user_id, account_id, f"{m}-02", -400.0, "investment_buy", "etf")
+    _tx(client, user_id, account_id, f"{m}-03", -250.0, "investment_buy", "crypto")
+    _tx(client, user_id, account_id, f"{m}-04", -1200.0, "expense", "mortgage")  # excluded
+    _tx(client, user_id, account_id, f"{m}-05", 800.0, "investment_sell", "etf")  # not a buy
+
+    response = client.get("/analytics/investment-by-category?months=12")
+    assert response.status_code == 200
+    cats = {r["category"]: r for r in response.json()}
+    assert cats["etf"]["total_base"] == 1000.0
+    assert cats["etf"]["txn_count"] == 2
+    assert cats["crypto"]["total_base"] == 250.0
+    assert "mortgage" not in cats
+    assert "investment_sell" not in cats
+
+
+def test_income_and_investment_by_category_single_month(client):
+    user_id, account_id = _setup(client)
+    this_m = date.today().strftime("%Y-%m")
+    last = _months_ago_str(1)
+    _tx(client, user_id, account_id, f"{this_m}-01", 5000.0, "income", "salary")
+    _tx(client, user_id, account_id, f"{last}-15", 4000.0, "income", "salary")
+    _tx(client, user_id, account_id, f"{this_m}-02", -500.0, "investment_buy", "etf")
+    _tx(client, user_id, account_id, f"{last}-16", -900.0, "investment_buy", "etf")
+
+    inc = {r["category"]: r for r in client.get(f"/analytics/income-by-category?month={this_m}").json()}
+    assert inc["salary"]["total_base"] == 5000.0
+    inv = {r["category"]: r for r in client.get(f"/analytics/investment-by-category?month={this_m}").json()}
+    assert inv["etf"]["total_base"] == 500.0
 
 
 def test_transfers_excluded_from_expenses(client):

@@ -148,9 +148,15 @@ export interface TransactionRead {
   needs_review: boolean
 }
 
-export const getTransactions = (limit = 500, category?: string) => {
+export const getTransactions = (
+  limit = 500,
+  category?: string,
+  period?: { month?: string; months?: number },
+) => {
   const q = new URLSearchParams({ limit: String(limit) })
   if (category) q.set('category', category)
+  if (period?.month) q.set('month', period.month)
+  else if (period?.months) q.set('months', String(period.months))
   return api<TransactionRead[]>(`/transactions?${q}`)
 }
 
@@ -228,13 +234,21 @@ export interface CategoryExpense {
   txn_count: number
 }
 
-export const getCategoryExpenses = (opts: number | { months?: number; month?: string } = 12) => {
-  const params =
-    typeof opts === 'number' ? { months: String(opts) }
-    : opts.month ? { month: opts.month }
-    : { months: String(opts.months ?? 12) }
-  return api<CategoryExpense[]>(`/analytics/expense-by-category?${new URLSearchParams(params)}`)
-}
+type CategoryOpts = number | { months?: number; month?: string }
+
+const categoryParams = (opts: CategoryOpts): Record<string, string> =>
+  typeof opts === 'number' ? { months: String(opts) }
+  : opts.month ? { month: opts.month }
+  : { months: String(opts.months ?? 12) }
+
+export const getCategoryExpenses = (opts: CategoryOpts = 12) =>
+  api<CategoryExpense[]>(`/analytics/expense-by-category?${new URLSearchParams(categoryParams(opts))}`)
+
+export const getCategoryIncome = (opts: CategoryOpts = 12) =>
+  api<CategoryExpense[]>(`/analytics/income-by-category?${new URLSearchParams(categoryParams(opts))}`)
+
+export const getCategoryInvestments = (opts: CategoryOpts = 12) =>
+  api<CategoryExpense[]>(`/analytics/investment-by-category?${new URLSearchParams(categoryParams(opts))}`)
 
 export interface NWSnapshotRead {
   id: number

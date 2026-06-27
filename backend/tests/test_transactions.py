@@ -34,6 +34,28 @@ def test_list_transactions(client):
     assert len(response.json()) == 3
 
 
+def test_filter_transactions_by_month(client):
+    user_id, account_id = _setup(client)
+    today = date.today()
+    this_m = today.strftime("%Y-%m")
+    prev_total = today.year * 12 + (today.month - 1) - 1
+    prev = date(prev_total // 12, prev_total % 12 + 1, 15)
+    for d in (f"{this_m}-05", f"{this_m}-20"):
+        client.post("/transactions", json={
+            "account_id": account_id, "user_id": user_id, "date": d,
+            "amount": 5.0, "currency": "USD", "description": "this month", "type": "income",
+            "category": "salary",
+        })
+    client.post("/transactions", json={
+        "account_id": account_id, "user_id": user_id, "date": str(prev),
+        "amount": 5.0, "currency": "USD", "description": "last month", "type": "income",
+        "category": "salary",
+    })
+    rows = client.get(f"/transactions?category=salary&month={this_m}").json()
+    assert len(rows) == 2
+    assert all(r["description"] == "this month" for r in rows)
+
+
 def test_filter_transactions_needs_review(client):
     user_id, account_id = _setup(client)
     client.post("/transactions", json={
