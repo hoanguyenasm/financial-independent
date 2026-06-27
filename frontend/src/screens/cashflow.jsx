@@ -21,20 +21,41 @@ export function CashFlowScreen({ go, currency, household }) {
 
   const _adaptCf = (data) => data.map(m => {
     const [y, mo] = m.month.split('-').map(Number);
-    return { label: DATA.MONTHS[mo - 1], year: y, income: m.income, expense: m.expense, net: m.net };
+    return { key: m.month, label: DATA.MONTHS[mo - 1], year: y, income: m.income, expense: m.expense, net: m.net };
   });
   const _cachedCf = loadCache('cashflow');
   const [cf, setCf] = useState(() => _cachedCf ? _adaptCf(_cachedCf) : DATA.CASHFLOW);
   const [liveCatExp, setLiveCatExp] = useState(() => loadCache('cat_expenses'));
+  const [monthSel, setMonthSel] = useState(null);   // 'YYYY-MM' for monthly view
   const [drillTxs, setDrillTxs] = useState([]);
   const [drillLoading, setDrillLoading] = useState(false);
 
   useEffect(() => {
     getCashflowMonthly(12)
-      .then(data => { saveCache('cashflow', data); setCf(_adaptCf(data)); })
+      .then(data => {
+        saveCache('cashflow', data);
+        const adapted = _adaptCf(data);
+        setCf(adapted);
+        // default the picker to the most recent month that actually has activity
+        if (!monthSel) {
+          let idx = adapted.length - 1;
+          for (let i = adapted.length - 1; i >= 0; i--) {
+            if (adapted[i].income > 0 || adapted[i].expense > 0) { idx = i; break; }
+          }
+          setMonthSel(adapted[idx]?.key ?? null);
+        }
+      })
       .catch(() => {});
-    getCategoryExpenses(12).then(data => { saveCache('cat_expenses', data); setLiveCatExp(data); }).catch(() => {});
   }, []);
+
+  // Fetch the category breakdown for exactly the period being shown.
+  useEffect(() => {
+    if (view === 'monthly' && !monthSel) return;
+    const opts = view === 'yearly' ? 12 : { month: monthSel };
+    getCategoryExpenses(opts)
+      .then(data => { saveCache('cat_expenses', data); setLiveCatExp(data); })
+      .catch(() => {});
+  }, [view, monthSel]);
 
   useEffect(() => {
     if (!drill) { setDrillTxs([]); return; }
@@ -44,16 +65,14 @@ export function CashFlowScreen({ go, currency, household }) {
       .catch(() => { setDrillTxs([]); setDrillLoading(false); });
   }, [drill]);
 
-  const scale = view === 'yearly' ? 12 : 1;
-  // For monthly view, use the last month that has any data (current month may be empty mid-month)
-  const lastDataIdx = (() => {
-    for (let i = cf.length - 1; i >= 0; i--) {
-      if (cf[i].income > 0 || cf[i].expense > 0) return i;
-    }
-    return cf.length - 1;
-  })();
-  const periodInc = view === 'monthly' ? cf[lastDataIdx].income : cf.reduce((s, m) => s + m.income, 0);
-  const periodInv = DATA.INVEST_TOTAL * scale;
+  const selEntry = useMemo(() => cf.find(m => m.key === monthSel) ?? null, [cf, monthSel]);
+  const periodLabel = view === 'yearly'
+    ? 'Trailing 12 months'
+    : (selEntry ? `${selEntry.label} ${selEntry.year}` : '—');
+  const periodInc = view === 'monthly'
+    ? (selEntry?.income ?? 0)
+    : cf.reduce((s, m) => s + m.income, 0);
+  const periodInv = DATA.INVEST_TOTAL * (view === 'yearly' ? 12 : 1);
 
   const groups = useMemo(() => {
     const GROUP_COLORS = Object.fromEntries(DATA.EXPENSE_GROUPS.map(g => [g.group, g.color]));
@@ -63,7 +82,9 @@ export function CashFlowScreen({ go, currency, household }) {
       const raw = {};
       for (const { category, total_base, txn_count } of liveCatExp) {
         const cat = catMap[category];
-        const groupName = cat?.group ?? 'Other';
+        // An outflow tagged with an income category (e.g. a returned rental deposit)
+        // shouldn't appear under "Income" in a spending breakdown — bucket it as Other.
+        const groupName = !cat ? 'Other' : (cat.kind === 'income' ? 'Other' : cat.group);
         const groupColor = GROUP_COLORS[groupName] ?? '#8595AD';
         if (!raw[groupName]) raw[groupName] = { group: groupName, color: groupColor, total: 0, subs: [] };
         raw[groupName].total += total_base;
@@ -80,7 +101,8 @@ export function CashFlowScreen({ go, currency, household }) {
   }, [liveCatExp, sort]);
 
   const expTotal = useMemo(() => groups.reduce((s, g) => s + g.total, 0), [groups]);
-  const periodExp = expTotal * scale;
+  const periodExp = expTotal;
+  const invScale = view === 'yearly' ? 12 : 1;
   const netSaved = periodInc - periodExp;
   const savingsRate = periodInc > 0 ? Math.round(netSaved / periodInc * 100) : 0;
   const maxGroup = Math.max(...groups.map(g => g.total));
@@ -93,10 +115,21 @@ export function CashFlowScreen({ go, currency, household }) {
     <div className="page rise">
       <div className="page-h">
         <h1>Cash Flow & Expenses</h1>
-        <span className="sub">{view === 'monthly' ? `${cf[lastDataIdx]?.label ?? ''} ${cf[lastDataIdx]?.year ?? ''}` : 'Trailing 12 months'} · {household === 'household' ? 'Household' : DATA.USERS[household].name}</span>
-        <div className="tabs" style={{ marginLeft: 'auto' }}>
-          <button className={view === 'monthly' ? 'on' : ''} onClick={() => setView('monthly')}>Monthly</button>
-          <button className={view === 'yearly' ? 'on' : ''} onClick={() => setView('yearly')}>Yearly</button>
+        <span className="sub">{periodLabel} · {household === 'household' ? 'Household' : DATA.USERS[household].name}</span>
+        <div className="row" style={{ marginLeft: 'auto', gap: 10 }}>
+          {view === 'monthly' && (
+            <Dropdown label="Month" searchable display={selEntry ? `${selEntry.label} ${selEntry.year}` : '—'}>
+              {[...cf].reverse().map(m => (
+                <DDItem key={m.key} on={m.key === monthSel} onClick={() => setMonthSel(m.key)} search={`${m.label} ${m.year}`}>
+                  {m.label} {m.year}
+                </DDItem>
+              ))}
+            </Dropdown>
+          )}
+          <div className="tabs">
+            <button className={view === 'monthly' ? 'on' : ''} onClick={() => setView('monthly')}>Monthly</button>
+            <button className={view === 'yearly' ? 'on' : ''} onClick={() => setView('yearly')}>Yearly</button>
+          </div>
         </div>
       </div>
 
@@ -136,7 +169,7 @@ export function CashFlowScreen({ go, currency, household }) {
           <div className="card-h"><div className="t"><b>Where it goes</b></div></div>
           <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 16px' }}>
             <Donut segments={groups.map(g => ({ value: g.total, color: g.color, label: g.group }))} size={184} stroke={26}
-              center={<><div className="num" style={{ fontSize: 24, fontWeight: 800 }}>{MC(periodExp)}</div><div className="kpi-sub">{view === 'monthly' ? 'this month' : 'per year'}</div></>} />
+              center={<><div className="num" style={{ fontSize: 24, fontWeight: 800 }}>{MC(periodExp)}</div><div className="kpi-sub">{view === 'monthly' ? (selEntry ? `${selEntry.label} ${selEntry.year}` : 'month') : '12 months'}</div></>} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
             {groups.map(g => (
@@ -180,7 +213,7 @@ export function CashFlowScreen({ go, currency, household }) {
                       <div className="bar" style={{ height: 6 }}><i style={{ width: (g.total / maxGroup * 100) + '%', background: g.color, boxShadow: 'none' }} /></div>
                     </div>
                     <span className="mono" style={{ textAlign: 'right', color: 'var(--text-3)', fontSize: 12.5 }}>{Math.round(g.total / expTotal * 100)}%</span>
-                    <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 15 }}>{M(g.total * scale)}</span>
+                    <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 15 }}>{M(g.total)}</span>
                   </div>
 
                   {/* subcategories */}
@@ -196,13 +229,13 @@ export function CashFlowScreen({ go, currency, household }) {
                             <span className="fx">{s.txns} txns</span>
                           </div>
                           <div className="bar" style={{ height: 5 }}><i style={{ width: (s.amount / g.total * 100) + '%', background: s.color, boxShadow: 'none' }} /></div>
-                          <span className="mono" style={{ textAlign: 'right', fontWeight: 700, fontSize: 13 }}>{M(s.amount * scale)}</span>
+                          <span className="mono" style={{ textAlign: 'right', fontWeight: 700, fontSize: 13 }}>{M(s.amount)}</span>
                           <Icon n="chevR" s={13} c="var(--text-3)" />
                         </div>
                       ))}
                       <div className="spread" style={{ padding: '8px 8px 0', marginTop: 2 }}>
                         <span className="kpi-sub">Subtotal · {g.group}</span>
-                        <span className="mono" style={{ fontWeight: 800, color: g.color }}>{M(g.total * scale)}</span>
+                        <span className="mono" style={{ fontWeight: 800, color: g.color }}>{M(g.total)}</span>
                       </div>
                     </div>
                   )}
@@ -238,7 +271,7 @@ export function CashFlowScreen({ go, currency, household }) {
                 <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color }} />
                 <div><b style={{ fontSize: 13.5 }}>{s.name}</b><div className="fx">{s.note}</div></div>
                 <div className="bar" style={{ height: 6 }}><i style={{ width: (s.amount / DATA.INVEST_SUBS[0].amount * 100) + '%', background: s.color, boxShadow: 'none' }} /></div>
-                <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{M(s.amount * scale)}</span>
+                <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{M(s.amount * invScale)}</span>
                 <Icon n="chevR" s={13} c="var(--text-3)" />
               </div>
             ))}

@@ -228,8 +228,13 @@ export interface CategoryExpense {
   txn_count: number
 }
 
-export const getCategoryExpenses = (months = 12) =>
-  api<CategoryExpense[]>(`/analytics/expense-by-category?months=${months}`)
+export const getCategoryExpenses = (opts: number | { months?: number; month?: string } = 12) => {
+  const params =
+    typeof opts === 'number' ? { months: String(opts) }
+    : opts.month ? { month: opts.month }
+    : { months: String(opts.months ?? 12) }
+  return api<CategoryExpense[]>(`/analytics/expense-by-category?${new URLSearchParams(params)}`)
+}
 
 export interface NWSnapshotRead {
   id: number

@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from collections import defaultdict
 from datetime import date
+from typing import Optional
+import calendar
 from app.database import get_db
 from app.models import Asset, Transaction, FIGoal, Account
 
@@ -52,13 +54,24 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
 
 
 @router.get("/expense-by-category")
-def expense_by_category(months: int = Query(default=12, ge=1, le=60), db: Session = Depends(get_db)):
-    cutoff = _months_ago(date.today(), months - 1)
-    txs = db.query(Transaction).filter(
-        Transaction.date >= cutoff,
+def expense_by_category(
+    months: int = Query(default=12, ge=1, le=60),
+    month: Optional[str] = Query(default=None, description="Single calendar month YYYY-MM"),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Transaction).filter(
         Transaction.type.in_(EXPENSE_TYPES),
         Transaction.category != "transfer",  # exclude internal movements
-    ).all()
+    )
+    if month:
+        y, m = (int(p) for p in month.split("-"))
+        q = q.filter(
+            Transaction.date >= date(y, m, 1),
+            Transaction.date <= date(y, m, calendar.monthrange(y, m)[1]),
+        )
+    else:
+        q = q.filter(Transaction.date >= _months_ago(date.today(), months - 1))
+    txs = q.all()
     totals: dict[str, float] = defaultdict(float)
     counts: dict[str, int] = defaultdict(int)
     for tx in txs:
