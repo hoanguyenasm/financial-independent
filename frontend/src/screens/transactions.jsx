@@ -17,14 +17,31 @@ function typeToClass(type) {
 }
 
 /* Guess a reusable keyword from a bank description so a rule matches future
-   siblings. Comdirect lines read "Auftraggeber: <merchant> Buchungstext: …";
-   the merchant is the stable part (refs/IDs differ every time). */
+   siblings across accounts. The merchant name is the stable part; order ids,
+   store numbers, and reference codes differ every time and must be dropped.
+     Comdirect:  "Auftraggeber: <merchant> Buchungstext: …"
+     AmEx:       "AMZN MKTP DE*NN05V5WN4 AMZN.COM/BILL" -> "AMZN MKTP"
+     PayPal:     "PAYPAL *SATURN 22122243333"          -> "SATURN"
+     Card:       "LIDL 5954 HEILBRONN"                 -> "LIDL" */
 function suggestPattern(desc) {
   if (!desc) return '';
-  const m = desc.match(/Auftraggeber:\s*(.+?)\s*(?:Buchungstext:|Verwendungszweck:|Buchungsschluessel:|Ref\.|$)/i);
-  let s = (m ? m[1] : desc).replace(/\s+/g, ' ').trim();
-  if (s.length > 40) s = s.slice(0, 40).trim();
-  return s;
+  // Comdirect: the payee sits between "Auftraggeber:" and the next field.
+  const cd = desc.match(/Auftraggeber:\s*(.+?)\s*(?:Buchungstext:|Verwendungszweck:|Buchungsschluessel:|Ref\.|$)/i);
+  if (cd) {
+    const s = cd[1].replace(/\s+/g, ' ').trim();
+    return s.length > 40 ? s.slice(0, 40).trim() : s;
+  }
+  let s = desc.replace(/\s+/g, ' ').trim();
+  // PayPal puts the real merchant after the asterisk.
+  const pp = s.match(/PAYPAL\s*\*\s*([A-Za-zÄÖÜäöü][\w .&'-]*?)(?:\s+\d{3,}.*)?$/i);
+  if (pp) return pp[1].replace(/\s+\d+$/, '').trim();
+  // Generic: drop ref-like tokens (pure numbers, 3+ digit runs, code*id, urls)
+  // and keep the leading merchant words.
+  const tokens = s.split(' ').filter(t =>
+    !/^\d+$/.test(t) && !/\d{3,}/.test(t) && !/[*]/.test(t) && !/\.(com|de|net|org)\b/i.test(t)
+  );
+  let out = tokens.slice(0, 2).join(' ').trim() || tokens.join(' ') || s;
+  return out.length > 40 ? out.slice(0, 40).trim() : out;
 }
 
 export function TransactionsScreen({ go, currency, household, initialFilter, registerSetReview, myUserId = 1 }) {
