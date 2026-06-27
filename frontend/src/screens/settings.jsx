@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
 import { getSettings, updateSettings, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal } from '../lib/api.ts';
+import { saveCache, loadCache, clearAllCache } from '../lib/cache.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'import');
@@ -40,7 +41,7 @@ function ImportTab() {
   const [over, setOver] = useState(false);
   const [result, setResult] = useState(null);   // last import log
   const [error, setError] = useState('');       // persistent error message
-  const [history, setHistory] = useState(DATA.IMPORTS);
+  const [history, setHistory] = useState(() => loadCache('import_logs') ?? DATA.IMPORTS);
   const [, showToast] = useToast();
   const [pathInput, setPathInput] = useState('');
 
@@ -64,11 +65,12 @@ function ImportTab() {
     }).catch(() => {});
   }, []);
 
-  const loadHistory = () => getImportLogs().then(setHistory).catch(() => {});
+  const loadHistory = () => getImportLogs().then(data => { saveCache('import_logs', data); setHistory(data); }).catch(() => {});
   useEffect(() => { loadHistory(); }, []);
 
   const afterImport = (log) => {
     localStorage.setItem('fire.my_user_id', String(selectedUserId));
+    clearAllCache(); // new data imported — invalidate all cached responses
     setResult(log);
     setError('');
     loadHistory();

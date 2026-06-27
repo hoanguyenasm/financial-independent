@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Avatar, Check, Dropdown, DDItem, useToast } from '../ui.jsx';
 import { patchTransaction, createCategoryRule, getAccounts, getTransactions } from '../lib/api.ts';
+import { saveCache, loadCache } from '../lib/cache.ts';
 
 function typeToClass(type) {
   if (type === 'crypto') return 'crypto';
@@ -16,8 +17,12 @@ function typeToClass(type) {
 }
 
 export function TransactionsScreen({ go, currency, household, initialFilter, registerSetReview, myUserId = 1 }) {
-  const [tx, setTx] = useState(() => DATA.TX.map(t => ({ ...t })));
-  const [accounts, setAccounts] = useState(DATA.ACCOUNTS);
+  const _adaptTx = (data) => data.map(t => ({ ...t, d: new Date(t.date), desc: t.description, amount_base: t.amount_base ?? t.amount }));
+  const _adaptAccounts = (data) => data.map(a => ({ id: a.id, name: a.name, type: a.type, orig_cur: a.currency, cls: typeToClass(a.type), base: 0, orig_bal: 0, is_active: a.is_active }));
+  const _cachedTx = loadCache('transactions');
+  const [tx, setTx] = useState(() => _cachedTx ? _adaptTx(_cachedTx) : DATA.TX.map(t => ({ ...t })));
+  const _cachedAccounts = loadCache('accounts');
+  const [accounts, setAccounts] = useState(() => _cachedAccounts ? _adaptAccounts(_cachedAccounts) : DATA.ACCOUNTS);
   const acctMap = useMemo(
     () => Object.fromEntries(accounts.map(a => [a.id, a])),
     [accounts]
@@ -55,31 +60,13 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
 
   useEffect(() => {
     getAccounts().then(data => {
-      if (data.length > 0) {
-        setAccounts(data.map(a => ({
-          id: a.id,
-          name: a.name,
-          type: a.type,
-          orig_cur: a.currency,
-          cls: typeToClass(a.type),
-          base: 0,
-          orig_bal: 0,
-          is_active: a.is_active,
-        })));
-      }
+      if (data.length > 0) { saveCache('accounts', data); setAccounts(_adaptAccounts(data)); }
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
     getTransactions(500).then(data => {
-      if (data.length > 0) {
-        setTx(data.map(t => ({
-          ...t,
-          d: new Date(t.date),
-          desc: t.description,
-          amount_base: t.amount_base ?? t.amount,
-        })));
-      }
+      if (data.length > 0) { saveCache('transactions', data); setTx(_adaptTx(data)); }
     }).catch(() => {});
   }, []);
 

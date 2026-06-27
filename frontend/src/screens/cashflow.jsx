@@ -8,6 +8,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Dropdown, DDItem, Donut, CashBars } from '../ui.jsx';
 import { getCashflowMonthly, getCategoryExpenses, getTransactions } from '../lib/api.ts';
+import { saveCache, loadCache } from '../lib/cache.ts';
 
 export function CashFlowScreen({ go, currency, household }) {
   const M = (v, dec) => FMT.display(currency, v, dec);
@@ -18,21 +19,21 @@ export function CashFlowScreen({ go, currency, household }) {
   const [sort, setSort] = useState('amount');       // amount | name
   const [expanded, setExpanded] = useState(() => new Set([DATA.EXPENSE_GROUPS[0].group]));
 
-  const [cf, setCf] = useState(DATA.CASHFLOW);
-  const [liveCatExp, setLiveCatExp] = useState(null);
+  const _adaptCf = (data) => data.map(m => {
+    const [y, mo] = m.month.split('-').map(Number);
+    return { label: DATA.MONTHS[mo - 1], year: y, income: m.income, expense: m.expense, net: m.net };
+  });
+  const _cachedCf = loadCache('cashflow');
+  const [cf, setCf] = useState(() => _cachedCf ? _adaptCf(_cachedCf) : DATA.CASHFLOW);
+  const [liveCatExp, setLiveCatExp] = useState(() => loadCache('cat_expenses'));
   const [drillTxs, setDrillTxs] = useState([]);
   const [drillLoading, setDrillLoading] = useState(false);
 
   useEffect(() => {
     getCashflowMonthly(12)
-      .then(data => {
-        setCf(data.map(m => {
-          const [y, mo] = m.month.split('-').map(Number);
-          return { label: DATA.MONTHS[mo - 1], year: y, income: m.income, expense: m.expense, net: m.net };
-        }));
-      })
+      .then(data => { saveCache('cashflow', data); setCf(_adaptCf(data)); })
       .catch(() => {});
-    getCategoryExpenses(12).then(setLiveCatExp).catch(() => {});
+    getCategoryExpenses(12).then(data => { saveCache('cat_expenses', data); setLiveCatExp(data); }).catch(() => {});
   }, []);
 
   useEffect(() => {

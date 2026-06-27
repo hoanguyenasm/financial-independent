@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Donut, AreaChart } from '../ui.jsx';
 import { getAccounts, createAccount, getAssets, getNWSnapshots, createAsset, updateAsset } from '../lib/api.ts';
+import { saveCache, loadCache } from '../lib/cache.ts';
 
 function typeToClass(type) {
   if (type === 'crypto') return 'crypto';
@@ -21,31 +22,29 @@ export function AccountsScreen({ go, currency, household }) {
   const S = DATA.SUMMARY;
   const [range, setRange] = useState('24');
 
-  const [liveAccounts, setLiveAccounts] = useState(DATA.ACCOUNTS);
+  const _adaptAccounts = (data) => data.map(a => ({
+    id: a.id, name: a.name, type: a.type, orig_cur: a.currency,
+    cls: typeToClass(a.type), base: 0, orig_bal: 0, is_active: a.is_active,
+  }));
+  const _cachedAccounts = loadCache('accounts');
+  const [liveAccounts, setLiveAccounts] = useState(() => _cachedAccounts ? _adaptAccounts(_cachedAccounts) : DATA.ACCOUNTS);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [assetModal, setAssetModal] = useState(null);
-  const [liveAssets, setLiveAssets] = useState(DATA.ASSETS);
-  const [liveNW, setLiveNW] = useState([]);
+  const [liveAssets, setLiveAssets] = useState(() => loadCache('assets') ?? DATA.ASSETS);
+  const [liveNW, setLiveNW] = useState(() => loadCache('nw_snapshots') ?? []);
 
   useEffect(() => {
     getAccounts().then(data => {
       if (data.length > 0) {
-        setLiveAccounts(data.map(a => ({
-          id: a.id,
-          name: a.name,
-          type: a.type,
-          orig_cur: a.currency,
-          cls: typeToClass(a.type),
-          base: 0,
-          orig_bal: 0,
-          is_active: a.is_active,
-        })));
+        saveCache('accounts', data);
+        setLiveAccounts(_adaptAccounts(data));
       }
     }).catch(() => {});
     getAssets().then(data => {
-      if (data.length > 0) setLiveAssets(data);
+      if (data.length > 0) { saveCache('assets', data); setLiveAssets(data); }
     }).catch(() => {});
     getNWSnapshots(24).then(snaps => {
+      saveCache('nw_snapshots', snaps);
       if (snaps.length >= 2) setLiveNW(snaps);
     }).catch(() => {});
   }, []);

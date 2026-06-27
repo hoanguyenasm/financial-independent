@@ -6,24 +6,27 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { DATA, FMT, FIRE } from '../data.js';
 import { Icon, Ring, Spark, AreaChart } from '../ui.jsx';
 import { getAnalyticsSummary, captureNWSnapshot, getNWSnapshots } from '../lib/api.ts';
+import { saveCache, loadCache } from '../lib/cache.ts';
 
 export function DashboardScreen({ go, currency, household }) {
   const S = DATA.SUMMARY;
   const M = (v, dec) => FMT.display(currency, v, dec);
   const MC = (v) => FMT.displayCompact(currency, v);
 
-  const [needsReview, setNeedsReview] = useState(S.needs_review);
-  const [passiveIncome, setPassiveIncome] = useState(S.passive_income);
-  const [monthlyExpenses, setMonthlyExpenses] = useState(S.monthly_expenses);
-  const [savingsRatePct, setSavingsRatePct] = useState(S.savings_rate_month);
-  const [netWorth, setNetWorth] = useState(S.net_worth);
-  const [fiTarget, setFiTarget] = useState(S.fi_target);
-  const [baseMonthlySavings, setBaseMonthlySavings] = useState(S.base_monthly_savings);
-  const [liveNW, setLiveNW] = useState([]);
+  const _cs = loadCache('summary');
+  const [needsReview, setNeedsReview] = useState(_cs?.needs_review ?? S.needs_review);
+  const [passiveIncome, setPassiveIncome] = useState(_cs?.passive_income_monthly ?? S.passive_income);
+  const [monthlyExpenses, setMonthlyExpenses] = useState(_cs?.monthly_expenses ?? S.monthly_expenses);
+  const [savingsRatePct, setSavingsRatePct] = useState(_cs ? Math.round(_cs.savings_rate * 100) : S.savings_rate_month);
+  const [netWorth, setNetWorth] = useState(_cs?.net_worth ?? S.net_worth);
+  const [fiTarget, setFiTarget] = useState(_cs?.fi_target ?? S.fi_target);
+  const [baseMonthlySavings, setBaseMonthlySavings] = useState(_cs?.base_monthly_savings ?? S.base_monthly_savings);
+  const [liveNW, setLiveNW] = useState(() => loadCache('nw_snapshots') ?? []);
 
   useEffect(() => {
     getAnalyticsSummary()
       .then(s => {
+        saveCache('summary', s);
         setNeedsReview(s.needs_review);
         setPassiveIncome(s.passive_income_monthly);
         setMonthlyExpenses(s.monthly_expenses);
@@ -35,6 +38,7 @@ export function DashboardScreen({ go, currency, household }) {
       .catch(() => {});
     captureNWSnapshot().catch(() => {});
     getNWSnapshots(24).then(snaps => {
+      saveCache('nw_snapshots', snaps);
       if (snaps.length >= 2) setLiveNW(snaps);
     }).catch(() => {});
   }, []);
