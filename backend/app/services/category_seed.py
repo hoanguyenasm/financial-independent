@@ -37,6 +37,10 @@ SEED_RULES: list[tuple[str, str]] = [
     # public transport
     ("Bahn", "transit"), ("Deutsche Bahn", "transit"), ("VVS", "transit"),
     ("BVG", "transit"), ("FlixBus", "transit"), ("MVG", "transit"),
+    # investment fees & taxes (broker charges, transaction taxes)
+    ("Finanztransaktionssteuer", "investment_fees"), ("Transaktionssteuer", "investment_fees"),
+    ("Servicegebühr", "investment_fees"), ("Depotgebühr", "investment_fees"),
+    ("Verwahrentgelt", "investment_fees"), ("Ordergebühr", "investment_fees"),
     # utilities
     ("Yello", "utilities"), ("Telekom", "utilities"), ("Vodafone", "utilities"),
     # mortgage (expense — must NOT be in _INCOME_CATEGORIES)

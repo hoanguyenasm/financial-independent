@@ -110,6 +110,7 @@
     { id: 'crypto', name: 'Crypto', kind: 'investment', group: 'Investment', color: '#FB923C' },
     { id: 'investment_buy', name: 'Investment buy', kind: 'investment', group: 'Investment', color: '#38BDF8' },
     { id: 'investment_sell', name: 'Investment sell', kind: 'investment', group: 'Investment', color: '#818CF8' },
+    { id: 'investment_fees', name: 'Investment fees', kind: 'expense', group: 'Investment', color: '#FB7185' },
     // expense
     { id: 'mortgage', name: 'Mortgage', kind: 'expense', group: 'Housing', color: '#4D9BFF' },
     { id: 'utilities', name: 'Utilities', kind: 'expense', group: 'Housing', color: '#60A5FA' },
