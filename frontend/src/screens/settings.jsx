@@ -287,7 +287,20 @@ function ImportTab() {
                 return (
                   <tr key={h.id}>
                     <td><div className="row" style={{ gap: 9 }}><Icon n="doc" s={15} c="var(--text-3)" /><span style={{ fontWeight: 600 }}>{h.file || h.filename}</span></div></td>
-                    <td className="t2" style={{ fontSize: 12.5 }}>{h.acct ? (DATA.ACCT[h.acct] ? DATA.ACCT[h.acct].name : h.acct) : `Account ${h.account_id}`}</td>
+                    <td className="t2" style={{ fontSize: 12.5 }}>
+                      {(() => {
+                        const a = accounts.find(x => x.id === h.account_id);
+                        const name = a?.name
+                          || (h.acct && DATA.ACCT[h.acct] ? DATA.ACCT[h.acct].name : null)
+                          || (h.account_id ? `Account ${h.account_id}` : '—');
+                        return (
+                          <span className="row" style={{ gap: 7 }}>
+                            {a && <span style={{ width: 7, height: 7, borderRadius: 2, background: `var(--c-${a.cls})` }} />}
+                            <span style={{ fontWeight: 600 }}>{name}</span>
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="mono" style={{ fontSize: 12, color: 'var(--text-2)' }}>{h.date || (h.imported_at ? new Date(h.imported_at).toLocaleDateString() : '—')}</td>
                     <td className="r mono" style={{ fontWeight: 700 }}>{h.rows || h.rows_imported || '—'}</td>
                     <td className="c">
