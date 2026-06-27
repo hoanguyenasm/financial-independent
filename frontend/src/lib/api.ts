@@ -214,6 +214,9 @@ export const createAsset = (payload: AssetWrite) =>
 export const updateAsset = (id: number, payload: Partial<AssetWrite>) =>
   api<AssetRead>(`/assets/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
 
+export const deleteAsset = (id: number) =>
+  api<void>(`/assets/${id}`, { method: 'DELETE' })
+
 export interface CategoryExpense {
   category: string
   total_base: number

@@ -5,7 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { DATA, FMT } from '../data.js';
 import { Icon, Donut, AreaChart } from '../ui.jsx';
-import { getAccounts, createAccount, getAssets, getNWSnapshots, createAsset, updateAsset } from '../lib/api.ts';
+import { getAccounts, createAccount, getAssets, getNWSnapshots, createAsset, updateAsset, deleteAsset } from '../lib/api.ts';
 import { saveCache, loadCache } from '../lib/cache.ts';
 
 function typeToClass(type) {
@@ -32,6 +32,7 @@ export function AccountsScreen({ go, currency, household }) {
   const [assetModal, setAssetModal] = useState(null);
   const [liveAssets, setLiveAssets] = useState(() => loadCache('assets') ?? DATA.ASSETS);
   const [liveNW, setLiveNW] = useState(() => loadCache('nw_snapshots') ?? []);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   useEffect(() => {
     getAccounts().then(data => {
@@ -233,17 +234,18 @@ export function AccountsScreen({ go, currency, household }) {
             <thead>
               <tr>
                 <th>Asset</th><th className="r">Qty</th><th className="r">Avg cost</th><th className="r">Price</th>
-                <th className="r">Value ({currency})</th><th className="r">Gain / loss</th>
+                <th className="r">Value ({currency})</th><th className="r">Gain / loss</th><th style={{ width: 32 }}></th>
               </tr>
             </thead>
             <tbody>
               {groups.map(g => (
                 <React.Fragment key={g.key}>
-                  <tr><td colSpan="6" style={{ height: 34, background: 'var(--bg-soft)' }}>
+                  <tr><td colSpan="7" style={{ height: 34, background: 'var(--bg-soft)' }}>
                     <span className="row" style={{ gap: 8 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: `var(--c-${g.key})` }} /><b className="kpi-sub" style={{ color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '.06em', fontSize: 11 }}>{g.label}</b></span>
                   </td></tr>
                   {g.items.map(a => {
                     const c = calc(a);
+                    const confirming = confirmDeleteId === a.id;
                     return (
                       <tr key={a.id}>
                         <td>
@@ -259,6 +261,28 @@ export function AccountsScreen({ go, currency, household }) {
                         <td className="r mono" style={{ fontWeight: 700, color: c.gain >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
                           {c.gain >= 0 ? '+' : ''}{(c.gain * 100).toFixed(1)}%
                           <span style={{ display: 'block', fontSize: 11, fontWeight: 600, opacity: .85 }}>{c.gain >= 0 ? '+' : ''}{FMT.displayCompact(currency, c.valueBase - c.costBase)}</span>
+                        </td>
+                        <td>
+                          <button
+                            className={'btn icon sm' + (confirming ? ' neg' : '')}
+                            title={confirming ? 'Click again to confirm delete' : 'Delete asset'}
+                            style={{ opacity: confirming ? 1 : 0.35, color: confirming ? 'var(--neg)' : undefined, fontSize: confirming ? 10 : undefined, width: confirming ? 'auto' : 28, padding: confirming ? '0 8px' : undefined }}
+                            onMouseEnter={e => { if (!confirming) e.currentTarget.style.opacity = 1; }}
+                            onMouseLeave={e => { if (!confirming) e.currentTarget.style.opacity = 0.35; }}
+                            onBlur={() => setConfirmDeleteId(null)}
+                            onClick={async () => {
+                              if (!confirming) { setConfirmDeleteId(a.id); return; }
+                              setConfirmDeleteId(null);
+                              try {
+                                await deleteAsset(a.id);
+                                const updated = liveAssets.filter(x => x.id !== a.id);
+                                setLiveAssets(updated);
+                                saveCache('assets', updated);
+                              } catch {}
+                            }}
+                          >
+                            {confirming ? 'Delete?' : <Icon n="x" s={13} />}
+                          </button>
                         </td>
                       </tr>
                     );
