@@ -333,22 +333,63 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
 
 function CatMenu({ x, y, onPick, onClose, bulk, count }) {
   const ref = useRef(null);
+  const listRef = useRef(null);
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
   useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
     document.addEventListener('pointerdown', h, true);
     return () => document.removeEventListener('pointerdown', h, true);
   }, []);
-  const left = Math.min(x, window.innerWidth - 230);
-  const top = Math.min(y, window.innerHeight - 380);
+
+  const all = useMemo(() => DATA.CATEGORIES.filter(c => c.id !== 'uncategorized'), []);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.group || '').toLowerCase().includes(q) ||
+      (c.kind || '').toLowerCase().includes(q)
+    );
+  }, [all, query]);
+  useEffect(() => { setActive(0); }, [query]);
+  // keep the highlighted row in view
+  useEffect(() => {
+    const el = listRef.current?.querySelector('[data-active="1"]');
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }, [active]);
+
+  const onKey = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, filtered.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[active]) onPick(filtered[active].id); }
+    else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+  };
+
+  const left = Math.min(x, window.innerWidth - 250);
+  const top = Math.min(y, window.innerHeight - 420);
   return (
-    <div ref={ref} className="dd-menu" style={{ position: 'fixed', left, top, minWidth: 210, maxHeight: 360, overflowY: 'auto', zIndex: 130 }}>
-      {bulk && <div className="kpi-sub" style={{ padding: '4px 10px 8px' }}>Apply to {count} selected</div>}
-      {DATA.CATEGORIES.filter(c => c.id !== 'uncategorized').map(c => (
-        <button key={c.id} className="dd-item" onClick={() => onPick(c.id)}>
-          <span className="dot-c" style={{ background: c.color }} /><span style={{ flex: 1 }}>{c.name}</span>
-          <span className="fx" style={{ textTransform: 'capitalize' }}>{c.kind}</span>
-        </button>
-      ))}
+    <div ref={ref} className="dd-menu" style={{ position: 'fixed', left, top, minWidth: 230, width: 230, zIndex: 130 }}>
+      {bulk && <div className="kpi-sub" style={{ padding: '4px 10px 6px' }}>Apply to {count} selected</div>}
+      <div style={{ padding: '6px 8px 8px', position: 'sticky', top: 0, background: 'var(--surface-2, #1a1f2e)', zIndex: 1 }}>
+        <input
+          className="inp" autoFocus value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onKey}
+          placeholder="Type to filter…" style={{ width: '100%', height: 32, fontSize: 13 }}
+        />
+      </div>
+      <div ref={listRef} style={{ maxHeight: 320, overflowY: 'auto' }}>
+        {filtered.map((c, i) => (
+          <button key={c.id} data-active={i === active ? '1' : '0'} className="dd-item"
+            onMouseEnter={() => setActive(i)} onClick={() => onPick(c.id)}
+            style={i === active ? { background: 'var(--accent-soft)' } : undefined}>
+            <span className="dot-c" style={{ background: c.color }} /><span style={{ flex: 1 }}>{c.name}</span>
+            <span className="fx" style={{ textTransform: 'capitalize' }}>{c.kind}</span>
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <div className="fx" style={{ padding: '10px 12px', textAlign: 'center' }}>No category matches “{query}”.</div>
+        )}
+      </div>
     </div>
   );
 }
