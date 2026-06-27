@@ -283,11 +283,12 @@ function Spark({ values, w = 200, h = 40, color = 'var(--accent)', fill = false 
 }
 
 /* ---------------- grouped/waterfall bars (income vs expense) ---------------- */
-function CashBars({ data, w = 720, h = 230, mode = 'bars' }) {
+function CashBars({ data, w = 720, h = 230, mode = 'bars', onSelect, selectedKey }) {
   const pad = 28, bw = (w - pad * 2) / data.length;
   const hi = Math.max(...data.map(d => Math.max(d.income, d.expense))) * 1.12;
   const Y = v => h - 24 - v / hi * (h - 44);
   const [hov, setHov] = useState(null);
+  const clickable = typeof onSelect === 'function';
   return (
     <div style={{ position: 'relative' }}>
       <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h}>
@@ -295,11 +296,15 @@ function CashBars({ data, w = 720, h = 230, mode = 'bars' }) {
         {data.map((d, i) => {
           const cx = pad + i * bw + bw / 2;
           const gw = Math.min(13, bw * .3);
+          const selected = selectedKey != null && d.key === selectedKey;
           return (
-            <g key={i} onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)} style={{ cursor: 'pointer' }}>
-              <rect x={cx - gw - 2} y={Y(d.income)} width={gw} height={h - 24 - Y(d.income)} rx="3" fill="var(--pos)" opacity={hov == null || hov === i ? 1 : .4} />
-              <rect x={cx + 2} y={Y(d.expense)} width={gw} height={h - 24 - Y(d.expense)} rx="3" fill="var(--neg)" opacity={hov == null || hov === i ? 1 : .4} />
-              <text x={cx} y={h - 7} textAnchor="middle" fill="var(--text-3)" fontSize="11" fontFamily="JetBrains Mono">{d.label}</text>
+            <g key={i} onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}
+              onClick={clickable ? () => onSelect(d, i) : undefined} style={{ cursor: clickable ? 'pointer' : 'default' }}>
+              {/* full-column hit area so the whole month is clickable, not just the thin bars */}
+              <rect x={pad + i * bw} y={20} width={bw} height={h - 44} fill={selected ? 'var(--accent-soft)' : 'transparent'} rx="4" />
+              <rect x={cx - gw - 2} y={Y(d.income)} width={gw} height={h - 24 - Y(d.income)} rx="3" fill="var(--pos)" opacity={hov == null || hov === i || selected ? 1 : .4} />
+              <rect x={cx + 2} y={Y(d.expense)} width={gw} height={h - 24 - Y(d.expense)} rx="3" fill="var(--neg)" opacity={hov == null || hov === i || selected ? 1 : .4} />
+              <text x={cx} y={h - 7} textAnchor="middle" fill={selected ? 'var(--text)' : 'var(--text-3)'} fontWeight={selected ? 700 : 400} fontSize="11" fontFamily="JetBrains Mono">{d.label}</text>
               {hov === i && <line x1={cx} y1="20" x2={cx} y2={h - 24} stroke="var(--border-2)" strokeDasharray="3 3" />}
             </g>
           );

@@ -224,7 +224,8 @@ export function CashFlowScreen({ go, currency, household }) {
             <span className="legend-row"><i style={{ background: 'var(--neg)' }} />Expenses</span>
           </div>
         </div>
-        <CashBars data={cf} h={232} />
+        <CashBars data={cf} h={232} selectedKey={view === 'monthly' ? monthSel : null}
+          onSelect={(d) => { if (!d.key) return; setView('monthly'); setMonthSel(d.key); }} />
       </section>
 
       {/* INCOME SOURCES (donut + breakdown) */}
