@@ -16,7 +16,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('transactions', sa.Column('import_log_id', sa.Integer(), sa.ForeignKey('import_logs.id'), nullable=True))
+    op.add_column('transactions', sa.Column('import_log_id', sa.Integer(), nullable=True))
 
 
 def downgrade() -> None:
