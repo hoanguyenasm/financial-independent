@@ -9,9 +9,12 @@ from app.models import Asset, Transaction, FIGoal, Account
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-INCOME_TYPES = {"income", "dividend", "interest", "investment_sell"}
+# investment_sell is NOT income — proceeds from selling holdings belong in the
+# investment overview, not the income side of cash flow.
+INCOME_TYPES = {"income", "dividend", "interest"}
 EXPENSE_TYPES = {"expense", "fee"}
 PASSIVE_TYPES = {"dividend", "interest"}
+INVESTMENT_TYPES = {"investment_buy", "investment_sell"}
 
 
 def _months_ago(d: date, months: int) -> date:
@@ -105,8 +108,9 @@ def investment_by_category(
     month: Optional[str] = Query(default=None, description="Single calendar month YYYY-MM"),
     db: Session = Depends(get_db),
 ):
-    # Only buys = "money put to work" this period. Sells are an inflow, not a deployment.
-    return _by_category(db, {"investment_buy"}, months, month)
+    # Buys (etf = passive Sparplan, trading = active) plus sells. The frontend separates
+    # the "investment_sell" row (an inflow) from the buy categories (money deployed).
+    return _by_category(db, INVESTMENT_TYPES, months, month)
 
 
 @router.get("/summary")

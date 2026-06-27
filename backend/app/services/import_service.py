@@ -25,10 +25,12 @@ _TRANSFER_KW = {
     "umgetauscht", "waehrungswechsel",        # FX conversion
     "abhebung vom geldkonto",                 # Scalable withdrawal
 }
-_INVESTMENT_BUY_KW = {
-    "savings plan execution", "kauf eines finanzinstruments", "buy trade",
-    "sparplan", "handel",
-}
+# Passive, recurring buys (ETF savings plans) vs. active one-off trades. Both are
+# "investment_buy" at the type level; the category split (etf vs trading) is decided
+# in _categorize so the cash-flow view can separate passive from active investing.
+_SAVINGS_PLAN_KW = {"savings plan execution", "sparplan"}
+_TRADE_KW = {"kauf eines finanzinstruments", "buy trade", "handel"}
+_INVESTMENT_BUY_KW = _SAVINGS_PLAN_KW | _TRADE_KW
 _INTEREST_KW = {"zinsen", "interest payment", "erhaltene zinsen", "zinsertrag"}
 # "ertrag" is matched as a whole word (see _infer_type) rather than a substring,
 # because "uebertrag" (transfer) contains it and must not be read as a dividend.
@@ -77,7 +79,13 @@ class ImportService:
             return "interest", False
         if tx_type == "dividend":
             return "dividend", False
-        if tx_type in ("transfer", "investment_buy", "investment_sell"):
+        if tx_type == "investment_buy":
+            # passive recurring Sparplan -> etf, everything else -> active trading
+            n = _normalize(description)
+            if any(k in n for k in _SAVINGS_PLAN_KW):
+                return "etf", False
+            return "trading", False
+        if tx_type in ("transfer", "investment_sell"):
             return tx_type, False
         # 5. fallback
         if credit:

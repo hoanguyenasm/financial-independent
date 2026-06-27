@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, clearAllImportLogs } from '../lib/api.ts';
+import { getSettings, updateSettings, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, clearAllImportLogs, recategorizeAll } from '../lib/api.ts';
 import { saveCache, loadCache, clearAllCache } from '../lib/cache.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
@@ -67,6 +67,20 @@ function ImportTab() {
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDeleteLogId, setConfirmDeleteLogId] = useState(null);
+  const [recat, setRecat] = useState(false);
+
+  const handleRecategorize = async () => {
+    setRecat(true);
+    try {
+      const { updated } = await recategorizeAll();
+      clearAllCache(); // categories changed — invalidate cached analytics/transactions
+      showToast(updated ? `Re-categorized ${updated} transaction${updated > 1 ? 's' : ''}` : 'No changes — all up to date', 'bolt');
+    } catch (err) {
+      showToast('Re-categorize failed: ' + (err.message || 'unknown error'), 'x');
+    } finally {
+      setRecat(false);
+    }
+  };
 
   const loadHistory = () => getImportLogs().then(data => { saveCache('import_logs', data); setHistory(data); }).catch(() => {});
 
@@ -267,15 +281,24 @@ function ImportTab() {
         <div className="card-h">
           <div className="t"><b>Import history</b></div>
           {history.length > 0 && (
-            <button
-              className={'btn sm ' + (confirmClear ? 'neg' : 'ghost')}
-              style={{ marginLeft: 'auto' }}
-              disabled={clearing}
-              onClick={handleClearAll}
-              onBlur={() => setConfirmClear(false)}
-            >
-              {clearing ? 'Clearing…' : confirmClear ? 'Confirm — delete everything?' : 'Clear all data'}
-            </button>
+            <div className="row" style={{ marginLeft: 'auto', gap: 8 }}>
+              <button
+                className="btn sm ghost"
+                disabled={recat || clearing}
+                onClick={handleRecategorize}
+                title="Re-apply all category rules to every existing transaction"
+              >
+                <Icon n="bolt" s={14} />{recat ? 'Re-categorizing…' : 'Re-categorize all'}
+              </button>
+              <button
+                className={'btn sm ' + (confirmClear ? 'neg' : 'ghost')}
+                disabled={clearing}
+                onClick={handleClearAll}
+                onBlur={() => setConfirmClear(false)}
+              >
+                {clearing ? 'Clearing…' : confirmClear ? 'Confirm — delete everything?' : 'Clear all data'}
+              </button>
+            </div>
           )}
         </div>
         <div className="tbl-wrap" style={{ border: 'none' }}>

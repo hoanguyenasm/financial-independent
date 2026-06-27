@@ -270,3 +270,6 @@ export const deleteImportLog = (id: number) =>
 
 export const clearAllImportLogs = () =>
   api<void>('/import/logs', { method: 'DELETE' })
+
+export const recategorizeAll = () =>
+  api<{ updated: number }>('/import/recategorize', { method: 'POST' })

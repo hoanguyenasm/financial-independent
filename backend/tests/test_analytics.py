@@ -149,24 +149,38 @@ def test_income_by_category_excludes_transfer(client):
     assert cats["salary"]["total_base"] == 4000.0
 
 
-def test_investment_by_category(client):
+def test_investment_by_category_splits_passive_active_and_includes_sells(client):
     user_id, account_id = _setup(client)
     m = date.today().strftime("%Y-%m")
     # investment buys are stored negative (money leaving the cash account)
-    _tx(client, user_id, account_id, f"{m}-01", -600.0, "investment_buy", "etf")
-    _tx(client, user_id, account_id, f"{m}-02", -400.0, "investment_buy", "etf")
-    _tx(client, user_id, account_id, f"{m}-03", -250.0, "investment_buy", "crypto")
-    _tx(client, user_id, account_id, f"{m}-04", -1200.0, "expense", "mortgage")  # excluded
-    _tx(client, user_id, account_id, f"{m}-05", 800.0, "investment_sell", "etf")  # not a buy
+    _tx(client, user_id, account_id, f"{m}-01", -600.0, "investment_buy", "etf")      # passive Sparplan
+    _tx(client, user_id, account_id, f"{m}-02", -400.0, "investment_buy", "etf")      # passive Sparplan
+    _tx(client, user_id, account_id, f"{m}-03", -250.0, "investment_buy", "trading")  # active trade
+    _tx(client, user_id, account_id, f"{m}-04", -1200.0, "expense", "mortgage")       # excluded
+    _tx(client, user_id, account_id, f"{m}-05", 800.0, "investment_sell", "investment_sell")
 
     response = client.get("/analytics/investment-by-category?months=12")
     assert response.status_code == 200
     cats = {r["category"]: r for r in response.json()}
     assert cats["etf"]["total_base"] == 1000.0
     assert cats["etf"]["txn_count"] == 2
-    assert cats["crypto"]["total_base"] == 250.0
+    assert cats["trading"]["total_base"] == 250.0
+    assert cats["investment_sell"]["total_base"] == 800.0  # sells now belong here
     assert "mortgage" not in cats
-    assert "investment_sell" not in cats
+
+
+def test_investment_sell_is_not_income(client):
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    _tx(client, user_id, account_id, f"{m}-01", 5000.0, "income", "salary")
+    _tx(client, user_id, account_id, f"{m}-02", 800.0, "investment_sell", "investment_sell")
+
+    inc = {r["category"]: r for r in client.get("/analytics/income-by-category").json()}
+    assert "investment_sell" not in inc
+    assert inc["salary"]["total_base"] == 5000.0
+    # and it must not inflate cash-flow income either
+    row = next(r for r in client.get("/analytics/cashflow-monthly").json() if r["month"] == m)
+    assert row["income"] == 5000.0
 
 
 def test_income_and_investment_by_category_single_month(client):

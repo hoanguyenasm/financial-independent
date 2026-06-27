@@ -118,7 +118,9 @@ export function CashFlowScreen({ go, currency, household }) {
   // window as the Income KPI; otherwise fall back to the mock breakdown.
   const incomeGroups = useMemo(() => {
     const catMap = Object.fromEntries(DATA.CATEGORIES.map(c => [c.id, c]));
-    if (liveCatInc && liveCatInc.length) {
+    // A loaded array (even empty) is authoritative — only fall back to mock when the
+    // backend has never responded (null), so a quiet month shows nothing, not demo data.
+    if (Array.isArray(liveCatInc)) {
       return liveCatInc.map(({ category, total_base, txn_count }) => {
         const cat = catMap[category];
         return { id: category, name: cat?.name ?? category, amount: total_base, color: cat?.color ?? '#86EFAC', txns: txn_count };
@@ -130,7 +132,7 @@ export function CashFlowScreen({ go, currency, household }) {
 
   // Money put to work this period (investment buys), by category. Live data is already
   // scoped to the period; the mock fallback is monthly, so scale it for the yearly view.
-  const investLive = !!(liveCatInv && liveCatInv.length);
+  const investLive = Array.isArray(liveCatInv);
   const investGroups = useMemo(() => {
     const catMap = Object.fromEntries(DATA.CATEGORIES.map(c => [c.id, c]));
     if (investLive) {
@@ -146,7 +148,12 @@ export function CashFlowScreen({ go, currency, household }) {
     }
     return DATA.INVEST_SUBS.map(s => ({ ...s, amount: s.amount * invScale }));
   }, [investLive, liveCatInv, invScale]);
-  const periodInv = useMemo(() => investGroups.reduce((s, g) => s + g.amount, 0), [investGroups]);
+  // Buys (etf = passive Sparplan, trading = active) drive the "money put to work" donut.
+  // Sells are an inflow out of investments — shown separately, never in the buy donut.
+  const investBuys = useMemo(() => investGroups.filter(g => g.id !== 'investment_sell'), [investGroups]);
+  const investSold = useMemo(() => investGroups.find(g => g.id === 'investment_sell') ?? null, [investGroups]);
+  const periodInv = useMemo(() => investBuys.reduce((s, g) => s + g.amount, 0), [investBuys]);
+  const investNet = periodInv - (investSold?.amount ?? 0);
 
   const netSaved = periodInc - periodExp;
   const savingsRate = periodInc > 0 ? Math.round(netSaved / periodInc * 100) : 0;
@@ -204,7 +211,7 @@ export function CashFlowScreen({ go, currency, household }) {
       <div className="gridcols-4" style={{ marginBottom: 18 }}>
         <KpiCard label={view === 'monthly' ? 'Income' : 'Income · 12 mo'} val={M(periodInc)} accent="var(--pos)" icon="cashflow" delta={fmtDelta(incDelta)} deltaGood={incDelta >= 0} />
         <KpiCard label={view === 'monthly' ? 'Expenses' : 'Expenses · 12 mo'} val={M(periodExp)} accent="var(--neg)" icon="wallet" delta={fmtDelta(expDelta)} deltaGood={expDelta <= 0} />
-        <KpiCard label="Invested" val={M(periodInv)} accent="var(--accent)" icon="trend" sub={investGroups.length ? investGroups.slice(0, 4).map(g => g.name).join(' · ') : 'No buys this period'} />
+        <KpiCard label="Invested" val={M(periodInv)} accent="var(--accent)" icon="trend" sub={investBuys.length ? investBuys.slice(0, 4).map(g => g.name).join(' · ') : 'No buys this period'} />
         <KpiCard label="Net saved" val={M(netSaved)} accent="var(--c-realestate)" icon="bolt" sub={savingsRate + '% savings rate'} />
       </div>
 
@@ -364,21 +371,21 @@ export function CashFlowScreen({ go, currency, household }) {
           <div className="t"><b>Investment overview</b> · money put to work {view === 'monthly' ? 'this month' : 'this year'}</div>
           <span className="tag accent" style={{ marginLeft: 'auto' }}>Savings, not spending</span>
         </div>
-        {investGroups.length === 0 ? (
-          <div className="kpi-sub" style={{ padding: '24px 4px' }}>No investment buys recorded for this period.</div>
+        {investBuys.length === 0 && !investSold ? (
+          <div className="kpi-sub" style={{ padding: '24px 4px' }}>No investment activity recorded for this period.</div>
         ) : (
         <div className="grid" style={{ gridTemplateColumns: '280px 1fr', alignItems: 'center' }}>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <Donut segments={investGroups.map(s => ({ value: s.amount, color: s.color, label: s.name }))} size={168} stroke={24}
+            <Donut segments={investBuys.map(s => ({ value: s.amount, color: s.color, label: s.name }))} size={168} stroke={24}
               center={<><div className="num" style={{ fontSize: 22, fontWeight: 800 }}>{MC(periodInv)}</div><div className="kpi-sub">invested</div></>} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {investGroups.map((s, i) => (
+            {investBuys.map((s, i) => (
               <div key={s.id} className="clickable" onClick={() => setDrill(s.id)}
-                style={{ display: 'grid', gridTemplateColumns: '20px 1fr 140px 110px 18px', alignItems: 'center', gap: 12, padding: '11px 6px', borderBottom: i < investGroups.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                style={{ display: 'grid', gridTemplateColumns: '20px 1fr 140px 110px 18px', alignItems: 'center', gap: 12, padding: '11px 6px', borderBottom: i < investBuys.length - 1 ? '1px solid var(--border)' : 'none' }}>
                 <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color }} />
                 <div><b style={{ fontSize: 13.5 }}>{s.name}</b><div className="fx">{s.note}</div></div>
-                <div className="bar" style={{ height: 6 }}><i style={{ width: (s.amount / investGroups[0].amount * 100) + '%', background: s.color, boxShadow: 'none' }} /></div>
+                <div className="bar" style={{ height: 6 }}><i style={{ width: (s.amount / investBuys[0].amount * 100) + '%', background: s.color, boxShadow: 'none' }} /></div>
                 <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{M(s.amount)}</span>
                 <Icon n="chevR" s={13} c="var(--text-3)" />
               </div>
@@ -387,19 +394,25 @@ export function CashFlowScreen({ go, currency, household }) {
               <b style={{ fontSize: 14 }}>Total invested</b>
               <span className="num" style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>{M(periodInv)}</span>
             </div>
+            {investSold && (
+              <>
+                <div className="clickable spread" onClick={() => setDrill('investment_sell')}
+                  style={{ padding: '11px 6px', marginTop: 8, borderTop: '1px solid var(--border)' }}>
+                  <span className="row" style={{ gap: 10 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: investSold.color }} />
+                    <span><b style={{ fontSize: 13.5 }}>Sold / withdrawn</b><div className="fx">{investSold.note}</div></span>
+                  </span>
+                  <span className="mono" style={{ fontWeight: 800, fontSize: 14, color: 'var(--neg)' }}>−{M(investSold.amount)}</span>
+                </div>
+                <div className="spread" style={{ padding: '4px 6px 0' }}>
+                  <b style={{ fontSize: 14 }}>Net invested</b>
+                  <span className="num" style={{ fontSize: 18, fontWeight: 800, color: investNet >= 0 ? 'var(--accent)' : 'var(--neg)' }}>{M(investNet)}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
         )}
-      </section>
-
-      {/* TREND */}
-      <section className="card">
-        <div className="card-h"><div className="t"><b>Top groups</b> · trailing 12 months</div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            {DATA.CAT_TREND.map(c => <span key={c.id} className="legend-row"><i style={{ background: c.color }} />{c.name}</span>)}
-          </div>
-        </div>
-        <MultiLine series={DATA.CAT_TREND} months={cf.map(m => m.label)} h={210} M={M} />
       </section>
 
       {drill && <DrillModal catId={drill} currency={currency} household={household} onClose={() => setDrill(null)} go={go} rows={drillTxs} loading={drillLoading} />}
@@ -417,37 +430,6 @@ function KpiCard({ label, val, accent, icon, delta, deltaGood, sub }) {
       <div className="num" style={{ fontSize: 28, fontWeight: 800, marginTop: 12 }}>{val}</div>
       {delta && <div className={'delta ' + (deltaGood ? 'pos' : 'neg')} style={{ marginTop: 6 }}>{delta} vs last period</div>}
       {sub && <div className="kpi-sub" style={{ marginTop: 6 }}>{sub}</div>}
-    </div>
-  );
-}
-
-function MultiLine({ series, months, h = 200, M }) {
-  const w = 1000, pad = 10;
-  const all = series.flatMap(s => s.series);
-  const hi = Math.max(...all) * 1.1, lo = 0;
-  const X = i => pad + i * (w - pad * 2) / (months.length - 1);
-  const Y = v => h - 22 - (v - lo) / (hi - lo) * (h - 36);
-  const [hov, setHov] = useState(null);
-  return (
-    <div style={{ position: 'relative' }}>
-      <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="none"
-        onMouseLeave={() => setHov(null)}
-        onMouseMove={e => { const r = e.currentTarget.getBoundingClientRect(); const i = Math.round((e.clientX - r.left) / r.width * (months.length - 1)); setHov(Math.max(0, Math.min(months.length - 1, i))); }}>
-        {[0, .5, 1].map((f, i) => { const y = 14 + f * (h - 36); return <line key={i} x1={pad} y1={y} x2={w - pad} y2={y} stroke="var(--border)" />; })}
-        {series.map(s => {
-          const line = s.series.map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1)).join(' ');
-          return <path key={s.id} d={line} fill="none" stroke={s.color} strokeWidth="2.4" />;
-        })}
-        {hov != null && <line x1={X(hov)} y1="10" x2={X(hov)} y2={h - 22} stroke="var(--border-2)" strokeDasharray="3 3" />}
-        {hov != null && series.map(s => <circle key={s.id} cx={X(hov)} cy={Y(s.series[hov])} r="3.5" fill={s.color} />)}
-        {months.map((m, i) => i % 2 === 0 && <text key={i} x={X(i)} y={h - 6} textAnchor="middle" fill="var(--text-3)" fontSize="11" fontFamily="JetBrains Mono">{m}</text>)}
-      </svg>
-      {hov != null && (
-        <div style={{ position: 'absolute', top: 0, left: `${X(hov) / w * 100}%`, transform: 'translateX(-50%)', background: 'var(--surface-3)', border: '1px solid var(--border-2)', borderRadius: 10, padding: '9px 12px', pointerEvents: 'none', whiteSpace: 'nowrap', boxShadow: '0 8px 24px rgba(0,0,0,.5)' }}>
-          <div className="fx" style={{ marginBottom: 5 }}>{months[hov]}</div>
-          {series.map(s => <div key={s.id} className="row" style={{ gap: 7, fontSize: 12, fontWeight: 700 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: s.color }} />{s.name}<span style={{ marginLeft: 'auto', paddingLeft: 14 }}>{M(s.series[hov])}</span></div>)}
-        </div>
-      )}
     </div>
   );
 }

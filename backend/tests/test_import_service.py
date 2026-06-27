@@ -36,6 +36,31 @@ def test_categorize_direction_aware_and_rule_before_transfer():
     assert cz("Fee reversal nets to zero", _rules(), 0.0, "") == ("uncategorized", True)
 
 
+def test_savings_plan_buy_categorized_as_etf():
+    cz = ImportService._categorize
+    # Sparplan / savings plan execution = passive recurring ETF buy -> "etf"
+    assert cz("Trade Republic Sparplan VWCE", _rules(), -300.0, "investment_buy") == ("etf", False)
+    assert cz("Savings plan execution iShares Core", _rules(), -150.0, "investment_buy") == ("etf", False)
+
+
+def test_active_trade_buy_categorized_as_trading():
+    cz = ImportService._categorize
+    # one-off purchases = active trading -> "trading"
+    assert cz("Kauf eines Finanzinstruments SAP SE", _rules(), -1200.0, "investment_buy") == ("trading", False)
+    assert cz("Handel ASML Holding", _rules(), -800.0, "investment_buy") == ("trading", False)
+
+
+def test_investment_sell_keeps_sell_category():
+    cz = ImportService._categorize
+    assert cz("Verkauf Finanzinstrument VWCE", _rules(), 900.0, "investment_sell") == ("investment_sell", False)
+
+
+def test_infer_type_splits_buy_and_sell_by_direction():
+    assert _infer_type("Sparplan VWCE", -300.0) == "investment_buy"
+    assert _infer_type("Handel ASML", -800.0) == "investment_buy"
+    assert _infer_type("Sparplan VWCE Verkauf", 320.0) == "investment_sell"
+
+
 def test_uebertrag_typed_as_transfer_not_dividend():
     # "Übertrag" (German for transfer) normalizes to "uebertrag", which contains
     # the substring "ertrag" — it must NOT be misclassified as a dividend.
