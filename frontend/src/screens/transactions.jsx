@@ -38,7 +38,7 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
   const [fRange, setFRange] = useState('90');
   const last6Months = useMemo(() => {
     const months = [];
-    const d = new Date(DATA.TODAY);
+    const d = new Date();
     for (let i = 0; i < 6; i++) {
       months.push({ value: `m:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
         label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) });
@@ -72,7 +72,7 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
 
   const filtered = useMemo(() => {
     const cut = fRange !== 'all' && !fRange.startsWith('m:')
-      ? (new Date(DATA.TODAY), (() => { const d = new Date(DATA.TODAY); d.setDate(d.getDate() - +fRange); return d; })())
+      ? (() => { const d = new Date(); d.setDate(d.getDate() - +fRange); return d; })()
       : null;
     return tx.filter(t => {
       if (needsReview && !t.needs_review) return false;
