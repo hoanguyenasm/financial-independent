@@ -28,8 +28,15 @@ SEED_RULES: list[tuple[str, str]] = [
     ("GYMPASS", "subscriptions"), ("Netflix", "subscriptions"), ("Spotify", "subscriptions"),
     # health
     ("Kinderwunsch", "health"), ("Aerzte", "health"), ("Apotheke", "health"),
-    # transport
-    ("Bahn", "transport"), ("Aral", "transport"), ("Shell", "transport"),
+    # car: charging, wash, fuel, parking, maintenance
+    ("Tesla", "car"), ("Tesla Supercharger", "car"), ("Supercharger", "car"), ("Ionity", "car"),
+    ("EnBW mobility", "car"), ("Ladestation", "car"), ("Charging", "car"),
+    ("Waschstrasse", "car"), ("Waschpark", "car"), ("Car Wash", "car"), ("Autowäsche", "car"),
+    ("Aral", "car"), ("Shell", "car"), ("Esso", "car"), ("Tankstelle", "car"),
+    ("Parkhaus", "car"), ("PARKING", "car"), ("ADAC", "car"), ("Werkstatt", "car"),
+    # public transport
+    ("Bahn", "transit"), ("Deutsche Bahn", "transit"), ("VVS", "transit"),
+    ("BVG", "transit"), ("FlixBus", "transit"), ("MVG", "transit"),
     # utilities
     ("Yello", "utilities"), ("Telekom", "utilities"), ("Vodafone", "utilities"),
     # mortgage (expense — must NOT be in _INCOME_CATEGORIES)

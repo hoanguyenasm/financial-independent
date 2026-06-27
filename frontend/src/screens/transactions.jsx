@@ -326,7 +326,7 @@ function CatMenu({ x, y, onPick, onClose, bulk, count }) {
   return (
     <div ref={ref} className="dd-menu" style={{ position: 'fixed', left, top, minWidth: 210, maxHeight: 360, overflowY: 'auto', zIndex: 130 }}>
       {bulk && <div className="kpi-sub" style={{ padding: '4px 10px 8px' }}>Apply to {count} selected</div>}
-      {DATA.CATEGORIES.map(c => (
+      {DATA.CATEGORIES.filter(c => c.id !== 'uncategorized').map(c => (
         <button key={c.id} className="dd-item" onClick={() => onPick(c.id)}>
           <span className="dot-c" style={{ background: c.color }} /><span style={{ flex: 1 }}>{c.name}</span>
           <span className="fx" style={{ textTransform: 'capitalize' }}>{c.kind}</span>
