@@ -99,6 +99,44 @@ export async function importFromPath(
   return res.json()
 }
 
+export interface TreeImportFile {
+  file: string
+  bank: string | null
+  owner: string | null
+  account_id?: number
+  status: string
+  imported?: number
+  skipped?: number
+  uncategorized?: number
+  balance?: number | null
+}
+
+export interface TreeImportResult {
+  files_processed: number
+  rows_imported: number
+  rows_skipped: number
+  rows_uncategorized: number
+  files: TreeImportFile[]
+  errors: string[]
+}
+
+// Auto-detecting path import: routes each file to the account matching its
+// bank + owner, instead of forcing everything into one account.
+export async function importFromTree(
+  path: string,
+  userId: number,
+): Promise<TreeImportResult> {
+  const fd = new FormData()
+  fd.append('path', path)
+  fd.append('user_id', String(userId))
+  const res = await fetch(`${BASE}/import/from-tree`, { method: 'POST', body: fd })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `${res.status} ${res.statusText}`)
+  }
+  return res.json()
+}
+
 export const getImportLogs = (accountId?: number) => {
   const q = accountId != null ? `?account_id=${accountId}` : ''
   return api<ImportLogRead[]>(`/import/logs${q}`)

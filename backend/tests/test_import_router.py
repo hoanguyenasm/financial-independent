@@ -182,6 +182,26 @@ def test_import_from_tree_no_account_match(client):
     assert any(f["status"] == "no_account" for f in body["files"])
 
 
+def test_import_from_tree_accepts_single_file(client):
+    """The path box allows a single file too, so from-tree must accept a file path
+    (not only a directory) and still auto-detect per file."""
+    csv_content = (
+        "Buchungsdatum;Verwendungszweck;Betrag;Währung\n"
+        "01.05.2026;REWE Supermarkt;-42.80;EUR\n"
+    ).encode("utf-8")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        csv_path = os.path.join(tmpdir, "umsaetze_may.csv")
+        with open(csv_path, "wb") as f:
+            f.write(csv_content)
+        response = client.post(
+            "/import/from-tree",
+            data={"path": csv_path, "user_id": "1"},
+        )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["files_processed"] == 1
+
+
 def test_import_from_tree_invalid_path(client):
     response = client.post(
         "/import/from-tree",

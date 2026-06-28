@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, getCategoryRules, updateCategoryRule, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, reassignImportLog, clearAllImportLogs, recategorizeAll } from '../lib/api.ts';
+import { getSettings, updateSettings, getCategoryRules, updateCategoryRule, deleteCategoryRule, importFile, importFromPath, importFromTree, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, reassignImportLog, clearAllImportLogs, recategorizeAll } from '../lib/api.ts';
 import { saveCache, loadCache, clearAllCache } from '../lib/cache.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
@@ -150,9 +150,14 @@ function ImportTab() {
   const handlePathImport = async () => {
     const path = pathInput.trim();
     if (!path) return;
+    const auto = selectedAccountId === 'auto';
     setUploading(true); setError(''); setResult(null);
     try {
-      afterImport(await importFromPath(path, selectedAccountId ?? 1, selectedUserId));
+      // Auto = detect bank + owner per file and route each to its own account.
+      // Manual override = force every file in the path into the chosen account.
+      afterImport(auto
+        ? await importFromTree(path, selectedUserId)
+        : await importFromPath(path, selectedAccountId, selectedUserId));
     } catch (err) {
       setError(err.message || 'Import failed');
     } finally {
@@ -227,6 +232,22 @@ function ImportTab() {
                   <div style={{ color: 'var(--warn)', marginTop: 4 }}>
                     {result.errors.length} file(s) failed:
                     {result.errors.map((e, i) => <div key={i} style={{ paddingLeft: 8, opacity: 0.85 }}>• {e}</div>)}
+                  </div>
+                )}
+                {/* Per-file routing confirmation (auto-detect path import) */}
+                {result.files && result.files.length > 0 && (
+                  <div style={{ marginTop: 6, fontWeight: 500 }}>
+                    <div className="fx" style={{ marginBottom: 3 }}>Routed to:</div>
+                    {result.files.map((f, i) => {
+                      const acct = f.account_id ? accounts.find(a => a.id === f.account_id) : null;
+                      const routed = f.status !== 'no_account' && acct;
+                      return (
+                        <div key={i} style={{ paddingLeft: 8, opacity: 0.9, color: routed ? 'var(--text-2)' : 'var(--warn)' }}>
+                          • {f.file} → {routed ? acct.name : `not imported — no matching account (bank=${f.bank || '?'}, owner=${f.owner || '?'})`}
+                        </div>
+                      );
+                    })}
+                    <div className="fx" style={{ marginTop: 3 }}>Wrong account? Fix it in the import history below.</div>
                   </div>
                 )}
               </div>

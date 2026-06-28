@@ -151,13 +151,18 @@ def recategorize(db: Session = Depends(get_db)):
 @router.post("/from-tree", response_model=TreeImportResult, status_code=201)
 async def import_from_tree(path: str = Form(...), user_id: int = Form(1), db: Session = Depends(get_db)):
     path = path.strip()
-    if not os.path.isdir(path):
-        raise HTTPException(status_code=422, detail=f"Not a directory: {path}")
-    files: list[str] = []
-    for root, _, fnames in os.walk(path):
-        for fname in sorted(fnames):
-            if _extension(fname) in _ALLOWED_EXTENSIONS:
-                files.append(os.path.join(root, fname))
+    if os.path.isfile(path):
+        files: list[str] = [path] if _extension(path) in _ALLOWED_EXTENSIONS else []
+        if not files:
+            raise HTTPException(status_code=422, detail=f"Unsupported file type: {path}")
+    elif os.path.isdir(path):
+        files = []
+        for root, _, fnames in os.walk(path):
+            for fname in sorted(fnames):
+                if _extension(fname) in _ALLOWED_EXTENSIONS:
+                    files.append(os.path.join(root, fname))
+    else:
+        raise HTTPException(status_code=422, detail=f"Path not found: {path}")
 
     total_imp = total_skip = total_uncat = 0
     summary: list[dict] = []
