@@ -36,6 +36,18 @@ def test_categorize_direction_aware_and_rule_before_transfer():
     assert cz("Fee reversal nets to zero", _rules(), 0.0, "") == ("uncategorized", True)
 
 
+def test_specific_rule_wins_over_generic_substring():
+    # Scalable's "Prime-Abonnementgebühr" (broker subscription fee) must beat the
+    # generic Amazon "Prime" -> subscriptions rule: the longest matching pattern wins.
+    rules = [
+        CategoryRule(pattern="Prime", category="subscriptions"),
+        CategoryRule(pattern="Prime-Abonnement", category="investment_fees"),
+    ]
+    cz = ImportService._categorize
+    assert cz("Amazon Prime Video", rules, -8.99, "expense") == ("subscriptions", False)
+    assert cz("Prime-Abonnementgebühr", rules, -4.99, "expense") == ("investment_fees", False)
+
+
 def test_deposit_rule_matches_both_directions():
     # A neutral "deposit" rule must catch both the incoming Kaution (credit) and the
     # refund (debit) — unlike income/expense rules which are direction-specific.

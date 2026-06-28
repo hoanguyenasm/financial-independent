@@ -17,7 +17,7 @@ export function CashFlowScreen({ go, currency, household }) {
   const [fAcct, setFAcct] = useState('all');
   const [drill, setDrill] = useState(null);
   const [sort, setSort] = useState('amount');       // amount | name
-  const [expanded, setExpanded] = useState(() => new Set([DATA.EXPENSE_GROUPS[0].group]));
+  const [expanded, setExpanded] = useState(() => new Set());  // all groups collapsed by default
 
   const _adaptCf = (data) => data.map(m => {
     const [y, mo] = m.month.split('-').map(Number);

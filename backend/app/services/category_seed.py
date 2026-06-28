@@ -41,6 +41,8 @@ SEED_RULES: list[tuple[str, str]] = [
     ("Finanztransaktionssteuer", "investment_fees"), ("Transaktionssteuer", "investment_fees"),
     ("Servicegebühr", "investment_fees"), ("Depotgebühr", "investment_fees"),
     ("Verwahrentgelt", "investment_fees"), ("Ordergebühr", "investment_fees"),
+    # Scalable PRIME+ broker subscription fee — more specific than "Prime" (Amazon).
+    ("Prime-Abonnement", "investment_fees"),
     # utilities
     ("Yello", "utilities"), ("Telekom", "utilities"), ("Vodafone", "utilities"),
     # mortgage (expense — must NOT be in _INCOME_CATEGORIES)

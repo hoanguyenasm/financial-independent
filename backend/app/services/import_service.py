@@ -71,7 +71,9 @@ class ImportService:
         credit = amount > 0
         # 1. explicit rules, direction-aware (rules win over the transfer type).
         #    Neutral categories (deposit/transfer) match regardless of direction.
-        for rule in rules:
+        #    Longest pattern first, so a specific rule ("Prime-Abonnement") beats a
+        #    generic substring ("Prime") when both match.
+        for rule in sorted(rules, key=lambda r: len(r.pattern), reverse=True):
             if rule.pattern.lower() in lower_desc:
                 if rule.category in _NEUTRAL_CATEGORIES or credit == (rule.category in _INCOME_CATEGORIES):
                     return rule.category, False
