@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from app.parsers.pdf_parser import _parse_amount_eu, _TR_AMT_PAT, _REV_TX
+from app.parsers.pdf_parser import _parse_amount_eu, _TR_AMOUNT, _REV_TX
 
 _AMOUNT = r"(-?[\d.]+,\d{2})"
 
@@ -39,7 +39,7 @@ def extract_balance(bank: str, text_lines: list[str]) -> float | None:
                 return _parse_amount_eu(m.group(1))
         return None
     if bank == "trade_republic":
-        return _last_match_balance(text_lines, _TR_AMT_PAT, 2)
+        return _last_match_balance(text_lines, _TR_AMOUNT, 2)
     if bank == "revolut":
         return _last_match_balance(text_lines, _REV_TX, 4)
     return None

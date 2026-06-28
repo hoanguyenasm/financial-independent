@@ -192,128 +192,99 @@ _TR_MONTHS = {
     "jan": 1, "feb": 2, "mär": 3, "mar": 3, "apr": 4, "mai": 5, "jun": 6,
     "jul": 7, "aug": 8, "sep": 9, "okt": 10, "nov": 11, "dez": 12,
 }
-_TR_MON_PAT = re.compile(r"^(\d{1,2})\s+(Jan|Feb|Mär|Mar|Apr|Mai|Jun|Jul|Aug|Sep|Okt|Nov|Dez)\.?\s*(.*)", re.IGNORECASE)
-_TR_DAY_PAT = re.compile(r"^(\d{1,2})$")
-_TR_YEAR_PAT = re.compile(r"^(20\d{2})\b")
-_TR_AMT_PAT = re.compile(r"([\d.]+,\d{2})\s*[€€]\s*([\d.]+,\d{2})\s*[€€]\s*$")
-_TR_MON_ONLY = re.compile(r"^(Jan|Feb|Mär|Mar|Apr|Mai|Jun|Jul|Aug|Sep|Okt|Nov|Dez)\.?\s+(.*)", re.IGNORECASE)
+_TR_AMOUNT = re.compile(r"(-?[\d.]+,\d{2})\s*[€€]\s*(-?[\d.]+,\d{2})\s*[€€]")
+_TR_DATE_X = 95       # the DATUM column (day / Mon. / year, stacked) sits left of this x
+_TR_BODY_MAX_X = 360  # the amount + balance columns sit right of this x
+_TR_DAY = re.compile(r"\d{1,2}")
+_TR_YEAR = re.compile(r"20\d{2}")
 
 
 def _tr_month(s: str) -> int:
-    k = s.lower()[:3]
+    k = s.lower().rstrip(".")[:3]
     if k == "mär":
         k = "mar"
     return _TR_MONTHS.get(k, 0)
 
 
-def _parse_trade_republic(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
-    """
-    Trade Republic: transactions appear with date split across lines.
-    Variants:
-      DD Mon. [desc]\n TYPE amount€ balance€\n YYYY
-      DD\n Mon. desc amount€ balance€\n YYYY
-      DD Mon. [desc]\n [extra desc]\n TYPE amount€ balance€\n YYYY
-    Use balance delta to determine income vs expense.
-    """
-    # Extract starting balance
-    prev_balance: float | None = None
-    for line in lines:
-        m = re.search(r"Cashkonto\s+([\d.]+,\d{2})\s*[€€]", line)
-        if m:
-            prev_balance = _parse_amount_eu(m.group(1))
-            break
+def _tr_visual_lines(page) -> list[list[dict]]:
+    """Group a page's words into visual lines by their vertical position."""
+    words = page.extract_words(use_text_flow=False)
+    words.sort(key=lambda w: (round(w["top"]), w["x0"]))
+    lines: list[list[dict]] = []
+    cur: list[dict] = []
+    top: float | None = None
+    for w in words:
+        if top is not None and abs(w["top"] - top) > 3:
+            lines.append(cur)
+            cur = []
+        cur.append(w)
+        top = w["top"]
+    if cur:
+        lines.append(cur)
+    return lines
 
+
+def _parse_trade_republic(raw: bytes, currency: str = "EUR") -> list[ParsedRow]:
+    """
+    Trade Republic statements are a table that text extraction mangles: the DATUM
+    column stacks day / "Mon." / year vertically, and long security names wrap onto
+    extra lines, so a linear text scan drops ~1/3 of the rows. Reconstruct from word
+    coordinates instead — every visual line carrying "amount€ balance€" is one
+    transaction; its date comes from the DATUM column (this line and its stacked
+    neighbours), its description from the body tokens of that line plus the adjacent
+    wrapped lines (which hold the ISIN), and its sign from the running balance delta.
+    """
     rows: list[ParsedRow] = []
-    pending_day = 0
-    pending_month = 0
-    pending_desc: list[str] = []
+    prev_balance: float | None = None
+    with pdfplumber.open(io.BytesIO(raw)) as pdf:
+        for page in pdf.pages:  # opening balance from the Cashkonto summary
+            m = re.search(r"Cashkonto\s+([\d.]+,\d{2})", page.extract_text() or "")
+            if m:
+                prev_balance = _parse_amount_eu(m.group(1))
+                break
+        for page in pdf.pages:
+            L = _tr_visual_lines(page)
+            joined = [" ".join(w["text"] for w in ln) for ln in L]
+            for i, ln in enumerate(L):
+                m = _TR_AMOUNT.search(joined[i])
+                if not m:
+                    continue
+                # date: scan this line then its stacked neighbours (nearest first)
+                day = month = year = None
+                for src in (ln, L[i - 1] if i else [], L[i + 1] if i + 1 < len(L) else [],
+                            L[i - 2] if i >= 2 else [], L[i + 2] if i + 2 < len(L) else []):
+                    for w in src:
+                        if w["x0"] >= _TR_DATE_X:
+                            continue
+                        t = w["text"]
+                        if day is None and _TR_DAY.fullmatch(t):
+                            day = int(t)
+                        if month is None and _tr_month(t):
+                            month = _tr_month(t)
+                        if year is None and _TR_YEAR.fullmatch(t):
+                            year = int(t)
+                amt = _parse_amount_eu(m.group(1))
+                bal = _parse_amount_eu(m.group(2))
+                if not (day and month and year) or amt is None or bal is None:
+                    continue
 
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
+                # description: body tokens of this line + adjacent non-amount wrapped lines
+                def _body(idx: int) -> str:
+                    if not (0 <= idx < len(L)) or (idx != i and _TR_AMOUNT.search(joined[idx])):
+                        return ""
+                    toks = " ".join(w["text"] for w in L[idx] if _TR_DATE_X <= w["x0"] < _TR_BODY_MAX_X)
+                    return _TR_AMOUNT.split(toks)[0].strip()
+                desc = " ".join(p for p in (_body(i - 1), _body(i), _body(i + 1)) if p).strip()
+                desc = re.sub(r"\s*null\s*$", "", desc)  # TR renders the empty payment column as "null"
 
-        # Skip blank / header lines
-        if not line or line.startswith("TRADE REPUBLIC") or "DATUM TYP" in line or "KONTO" in line:
-            i += 1
-            continue
-
-        # "DD Mon. [rest]" — date + month on same line
-        m_dm = _TR_MON_PAT.match(line)
-        if m_dm:
-            pending_day = int(m_dm.group(1))
-            pending_month = _tr_month(m_dm.group(2))
-            rest = m_dm.group(3).strip()
-            pending_desc = [rest] if rest else []
-            i += 1
-            continue
-
-        # Plain "DD" — day only
-        m_d = _TR_DAY_PAT.match(line)
-        if m_d and 1 <= int(m_d.group(1)) <= 31:
-            pending_day = int(m_d.group(1))
-            pending_month = 0
-            pending_desc = []
-            i += 1
-            continue
-
-        # Year line — reset if we haven't already committed a transaction
-        if _TR_YEAR_PAT.match(line):
-            i += 1
-            continue
-
-        # Amount line: ends with "amount€ balance€"
-        m_amt = _TR_AMT_PAT.search(line)
-        if m_amt and pending_day:
-            # Check if line opens with month (e.g. "Apr. Zinsen ... 59,58€ 35.131,57€")
-            m_mon_only = _TR_MON_ONLY.match(line)
-            if m_mon_only and not pending_month:
-                pending_month = _tr_month(m_mon_only.group(1))
-                desc_part = m_mon_only.group(2)[: m_amt.start() - m_mon_only.start() - len(m_mon_only.group(1)) - 2].strip()
-            else:
-                desc_part = line[: m_amt.start()].strip()
-                # Strip leading "Mon. " if present
-                if m_mon_only:
-                    after_mon = m_mon_only.group(2)
-                    desc_part = after_mon[: m_amt.start() - len(line) + len(after_mon)].strip()
-
-            full_desc = " ".join(filter(None, pending_desc + [desc_part])).strip()
-            amt_val = _parse_amount_eu(m_amt.group(1))
-            balance_val = _parse_amount_eu(m_amt.group(2))
-
-            # Look ahead for year
-            year = date.today().year
-            for j in range(i + 1, min(i + 5, len(lines))):
-                m_yr = _TR_YEAR_PAT.match(lines[j].strip())
-                if m_yr:
-                    year = int(m_yr.group(1))
-                    break
-
-            if pending_month and amt_val is not None:
+                amount = amt if prev_balance is None else (
+                    abs(amt) if round(bal - prev_balance, 2) >= 0 else -abs(amt))
+                prev_balance = bal
                 try:
-                    txn_date = date(year, pending_month, pending_day)
-                    if prev_balance is not None and balance_val is not None:
-                        delta = round(balance_val - prev_balance, 2)
-                        amount = abs(amt_val) if delta >= 0 else -abs(amt_val)
-                    else:
-                        amount = amt_val
-                    prev_balance = balance_val
-                    if full_desc:
-                        rows.append(ParsedRow(date=txn_date, description=full_desc, amount=amount, currency=currency))
+                    rows.append(ParsedRow(date=date(year, month, day),
+                                          description=desc or "Trade Republic", amount=amount, currency=currency))
                 except ValueError:
                     pass
-
-            pending_day = 0
-            pending_month = 0
-            pending_desc = []
-            i += 1
-            continue
-
-        # Accumulate description when date is pending
-        if pending_day and line:
-            pending_desc.append(line)
-
-        i += 1
-
     return rows
 
 
@@ -555,6 +526,11 @@ def parse_pdf(file: BinaryIO, default_currency: str = "EUR") -> list[ParsedRow]:
     if lines and _looks_like_revolut_consolidated(lines):
         return _parse_revolut_consolidated(lines, default_currency)
 
+    # Trade Republic's vertically-stacked table needs word coordinates, not text — its
+    # linear text extraction drops wrapped rows. Detect and parse from coordinates first.
+    if lines and _looks_like_trade_republic(lines):
+        return _parse_trade_republic(raw, default_currency)
+
     # Try table extraction first
     rows: list[ParsedRow] = []
     with pdfplumber.open(io.BytesIO(raw)) as pdf:
@@ -572,8 +548,6 @@ def parse_pdf(file: BinaryIO, default_currency: str = "EUR") -> list[ParsedRow]:
     if not lines:
         return []
 
-    if _looks_like_trade_republic(lines):
-        return _parse_trade_republic(lines, default_currency)
     if _looks_like_revolut(lines):
         return _parse_revolut(lines, default_currency)
     if _looks_like_scalable(lines):

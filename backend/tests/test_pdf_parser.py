@@ -130,24 +130,48 @@ def test_parse_ing_kontoauszug_still_works():
     assert rows[1].amount == -430.0
 
 
-def test_parse_trade_republic_income_and_expense():
-    lines = [
-        "TRADE REPUBLIC BANK GMBH BRUNNENSTRASSE 19-21 10119 BERLIN",
-        "Cashkonto 5.428,06 € 5.892,02 € 10.673,30 € 646,78 €",
-        "DATUM TYP BESCHREIBUNG ZAHLUNGSEINGANGZAHLUNGSAUSGANG SALDO",
-        "01 Apr.",
-        "Zinsen Interest payment 9,48 € 5.437,54 €",
-        "2026",
-        "02 Apr.",
-        "Handel -Amundi ETF 150,00 € 5.287,54 €",
-        "2026",
-    ]
-    rows = _parse_trade_republic(lines)
+def _make_tr_pdf() -> bytes:
+    """Build a PDF mimicking Trade Republic's vertically-stacked table layout: the
+    DATUM column (day / Mon. / year) is stacked, and a Sparplan's security name wraps
+    onto lines above/below the amount line."""
+    from reportlab.pdfgen import canvas as _canvas
+    buf = io.BytesIO()
+    c = _canvas.Canvas(buf, pagesize=A4)
+    c.setFont("Helvetica", 9)
+
+    def put(parts, y):  # parts: list of (x, text)
+        for x, text in parts:
+            c.drawString(x, y, text)
+
+    put([(74, "TRADE REPUBLIC BANK GMBH")], 820)
+    put([(74, "Cashkonto"), (400, "1.000,00"), (430, "€")], 800)
+    put([(74, "DATUM"), (140, "TYP"), (200, "BESCHREIBUNG")], 780)
+    # Txn 1: interest +10,00 -> balance 1.010,00
+    put([(74, "01")], 760)
+    put([(74, "Jan."), (100, "Zinsen Interest payment"), (400, "10,00"), (430, "€"), (470, "1.010,00"), (520, "€")], 748)
+    put([(74, "2026")], 736)
+    # Txn 2: Sparplan buy -200,00 -> balance 810,00 (security name wraps above + below)
+    put([(74, "02")], 712)
+    put([(100, "Savings plan execution IE00B5BMR087 iShares")], 700)
+    put([(74, "Jan."), (100, "Handel"), (400, "200,00"), (430, "€"), (470, "810,00"), (520, "€")], 688)
+    put([(100, "Core S&P 500 UCITS ETF USD Acc quantity 0.3")], 676)
+    put([(74, "2026")], 664)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def test_parse_trade_republic_coordinates_capture_sparplan_and_signs():
+    rows = parse_pdf(io.BytesIO(_make_tr_pdf()))
     assert len(rows) == 2
-    assert rows[0].amount > 0  # interest income
-    assert rows[0].date == date(2026, 4, 1)
-    assert rows[1].amount < 0  # investment purchase
-    assert rows[1].date == date(2026, 4, 2)
+    # interest: balance rose -> income (positive), dated from the stacked DATUM column
+    assert rows[0].amount == 10.0
+    assert rows[0].date == date(2026, 1, 1)
+    # Sparplan: balance fell -> expense (negative); wrapped security name + ISIN folded in
+    assert rows[1].amount == -200.0
+    assert rows[1].date == date(2026, 1, 2)
+    assert "IE00B5BMR087" in rows[1].description
+    assert "Savings plan execution" in rows[1].description
 
 
 def test_parse_revolut_uses_balance_delta():
