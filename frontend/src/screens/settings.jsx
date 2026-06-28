@@ -4,7 +4,7 @@
 /* eslint-disable */
 import { useState, useEffect, useMemo } from 'react';
 import { DATA, FMT, FX } from '../data.js';
-import { Icon, Avatar, useToast } from '../ui.jsx';
+import { Icon, Avatar, Dropdown, DDItem, useToast } from '../ui.jsx';
 import { getSettings, updateSettings, getCategoryRules, updateCategoryRule, deleteCategoryRule, importFile, importFromPath, importFromTree, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, reassignImportLog, clearAllImportLogs, recategorizeAll } from '../lib/api.ts';
 import { saveCache, loadCache, clearAllCache } from '../lib/cache.ts';
 
@@ -83,6 +83,19 @@ function ImportTab() {
   };
 
   const loadHistory = () => getImportLogs().then(data => { saveCache('import_logs', data); setHistory(data); }).catch(() => {});
+
+  // Accounts grouped by owner for the reassign dropdown: Hoa first, then Norah,
+  // then anything else — sorted by name within each group.
+  const OWNER_ORDER = ['Hoa', 'Norah'];
+  const ownerOf = (name) => OWNER_ORDER.find(o => (name || '').includes(`(${o})`)) || 'Other';
+  const groupedAccounts = useMemo(() => {
+    const groups = {};
+    for (const a of accounts) (groups[ownerOf(a.name)] ??= []).push(a);
+    const order = [...OWNER_ORDER, ...Object.keys(groups).filter(o => !OWNER_ORDER.includes(o)).sort()];
+    return order
+      .filter(o => groups[o]?.length)
+      .map(o => ({ owner: o, items: groups[o].sort((x, y) => x.name.localeCompare(y.name)) }));
+  }, [accounts]);
 
   const handleReassign = async (log, newAccountId) => {
     if (!newAccountId || newAccountId === log.account_id) return;
@@ -337,7 +350,7 @@ function ImportTab() {
             </div>
           )}
         </div>
-        <div className="tbl-wrap" style={{ border: 'none' }}>
+        <div className="tbl-wrap" style={{ border: 'none', overflow: 'visible' }}>
           <table className="tbl">
             <thead><tr><th>File</th><th>Account</th><th>Date</th><th className="r">Rows</th><th className="c">Status</th><th style={{ width: 32 }}></th></tr></thead>
             <tbody>
@@ -347,25 +360,26 @@ function ImportTab() {
                   <tr key={h.id}>
                     <td><div className="row" style={{ gap: 9 }}><Icon n="doc" s={15} c="var(--text-3)" /><span style={{ fontWeight: 600 }}>{h.file || h.filename}</span></div></td>
                     <td className="t2" style={{ fontSize: 12.5 }}>
-                      {accounts.length > 0 ? (
-                        <span className="row" style={{ gap: 7 }}>
-                          {(() => {
-                            const a = accounts.find(x => x.id === h.account_id);
-                            return a && <span style={{ width: 7, height: 7, borderRadius: 2, background: `var(--c-${a.cls})`, flex: '0 0 auto' }} />;
-                          })()}
-                          <select
-                            className="inp"
-                            style={{ fontSize: 12, fontWeight: 600, padding: '2px 4px', maxWidth: 180 }}
-                            value={accounts.some(a => a.id === h.account_id) ? h.account_id : ''}
-                            title="Reassign this import to another account"
-                            onChange={e => handleReassign(h, Number(e.target.value))}>
-                            {!accounts.some(a => a.id === h.account_id) && (
-                              <option value="" disabled>{h.account_id ? `Account ${h.account_id}` : '—'}</option>
-                            )}
-                            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                          </select>
-                        </span>
-                      ) : (
+                      {accounts.length > 0 ? (() => {
+                        const a = accounts.find(x => x.id === h.account_id);
+                        const display = (
+                          <span className="row" style={{ gap: 7 }}>
+                            {a && <span style={{ width: 7, height: 7, borderRadius: 2, background: `var(--c-${a.cls})`, flex: '0 0 auto' }} />}
+                            <span style={{ fontWeight: 600 }}>{a ? a.name : (h.account_id ? `Account ${h.account_id}` : '—')}</span>
+                          </span>
+                        );
+                        return (
+                          <Dropdown searchable display={display} searchPlaceholder="Search account…">
+                            {groupedAccounts.flatMap(g => [
+                              <div key={'h-' + g.owner} className="dd-sep" style={{ height: 'auto', background: 'transparent', margin: '6px 8px 2px', fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-3)' }}>{g.owner}</div>,
+                              ...g.items.map(acc => (
+                                <DDItem key={acc.id} on={acc.id === h.account_id} dot={`var(--c-${acc.cls})`} search={acc.name}
+                                  onClick={() => handleReassign(h, acc.id)}>{acc.name}</DDItem>
+                              )),
+                            ])}
+                          </Dropdown>
+                        );
+                      })() : (
                         <span style={{ fontWeight: 600 }}>{h.account_id ? `Account ${h.account_id}` : '—'}</span>
                       )}
                     </td>
