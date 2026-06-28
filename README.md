@@ -42,6 +42,8 @@ alembic upgrade head
 
 # Start the API server
 uvicorn app.main:app --reload --port 8000
+OR
+python -m uvicorn app.main:app --reload 
 ```
 
 API is now live at **http://localhost:8000**
