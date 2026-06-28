@@ -113,6 +113,26 @@ def test_parse_ing_csv_description_includes_counterparty_and_purpose():
     assert "Die Miete" in rent.description      # purpose
 
 
+AMEX_ACTIVITY_CSV = (
+    "Datum,Beschreibung,Betrag,Weitere Details,Erscheint auf Ihrer Abrechnung als,Adresse,Stadt,PLZ,Land,Betreff\n"
+    "07/06/2026,AMAZON.DE Order,\"155,81\",,AMAZON.DE,\"Street\",Regensburg,93059,GERMANY,'ref1'\n"
+    "27/05/2026,ZAHLUNG/UEBERWEISUNG ERHALTEN,\"-295,36\",,ZAHLUNG,\"Street\",,12345,GERMANY,'ref2'\n"
+)
+
+
+def test_parse_amex_activity_csv_inverts_signs_and_reads_beschreibung():
+    """AmEx's activity export labels the description column 'Beschreibung' (so the
+    header was never detected -> 0 rows) and uses inverted signs: a charge is a
+    positive Betrag but an expense, a payment received is negative but a credit.
+    Dates are dd/mm/yyyy."""
+    rows = parse_csv(io.StringIO(AMEX_ACTIVITY_CSV))
+    assert len(rows) == 2
+    assert rows[0].description == "AMAZON.DE Order"
+    assert rows[0].amount == -155.81           # charge -> expense
+    assert rows[0].date == date(2026, 6, 7)    # dd/mm, not 7 June read as month
+    assert rows[1].amount == 295.36            # payment received -> credit
+
+
 def test_comdirect_csv_with_preamble_and_umsatz_header():
     raw = (
         '\n'

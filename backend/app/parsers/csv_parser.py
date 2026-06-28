@@ -16,7 +16,7 @@ def decode_csv_bytes(raw: bytes) -> str:
 
 _DATE_FORMATS = ["%d.%m.%Y", "%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%d.%m.%y"]
 _DATE_HEADERS = {"date", "datum", "buchungsdatum", "buchungstag", "buchung", "valutadatum", "valuta"}
-_DESC_HEADERS = {"description", "verwendungszweck", "buchungstext", "payee", "empfänger", "memo", "auftraggeber"}
+_DESC_HEADERS = {"description", "verwendungszweck", "buchungstext", "payee", "empfänger", "memo", "auftraggeber", "beschreibung"}
 _AMT_HEADERS  = {"amount", "betrag", "umsatz", "buchungsbetrag"}
 _CUR_HEADERS  = {"currency", "währung", "wahrung"}
 _DEBIT_HEADERS  = {"soll", "ausgabe", "debit"}
@@ -119,6 +119,9 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
         return []
     has_single_amount = amt_col is not None
     has_debit_or_credit = debit_col is not None or credit_col is not None
+    # AmEx's activity export inverts signs (a charge is a positive Betrag but an
+    # expense) and writes dates as dd/mm/yyyy. Detect it from its distinctive header.
+    is_amex = any("erscheint auf ihrer abrechnung" in h for h in headers)
 
     rows: list[ParsedRow] = []
     for raw in all_rows[header_idx + 1:]:
@@ -127,11 +130,18 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
         def cell(i): return raw[i].strip().strip('"') if i is not None and i < len(raw) else ""
 
         parsed_date = _parse_date(cell(date_col))
+        if is_amex:
+            try:
+                parsed_date = datetime.strptime(cell(date_col), "%d/%m/%Y").date()
+            except ValueError:
+                pass
         if parsed_date is None:
             continue
 
         if has_single_amount:
             amount = _parse_amount(cell(amt_col))
+            if amount is not None and is_amex:
+                amount = -amount  # charge (positive) -> expense; payment (negative) -> credit
         elif has_debit_or_credit:
             debit  = _parse_amount(cell(debit_col))  if debit_col  is not None else None
             credit = _parse_amount(cell(credit_col)) if credit_col is not None else None

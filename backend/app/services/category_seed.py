@@ -59,6 +59,9 @@ SEED_RULES: list[tuple[str, str]] = [
     # credit-card settlement pulled from the bank account = internal transfer, not expense
     ("American Express", "transfer"),
     ("AMERICAN EXPRESS", "transfer"),
+    # the matching credit on the AmEx card side (monthly payment received) is the same
+    # internal settlement seen from the card — not income
+    ("ZAHLUNG/ÜBERWEISUNG ERHALTEN", "transfer"),
     # rental deposit (Kaution) held on behalf of a tenant — neither income nor expense
     ("Kaution", "deposit"),
     ("Mietkaution", "deposit"),
