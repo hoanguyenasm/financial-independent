@@ -41,6 +41,9 @@ _DIVIDEND_KW = {
 
 # Module constants for categorization logic
 _INCOME_CATEGORIES = {"salary", "rental", "airbnb", "interest", "dividend", "income"}
+# Categories that make sense for investment rows. Buys/sells carry the security name
+# (e.g. "Apple", "Netflix"), so consumer rules must be ignored for them — only these apply.
+_INVESTMENT_CATEGORIES = {"etf", "trading", "investment_sell", "investment_fees", "gold"}
 # Neutral categories are direction-agnostic: a deposit (Kaution) or transfer rule must
 # match whether the money is coming in or going back out.
 _NEUTRAL_CATEGORIES = {"transfer", "deposit"}
@@ -69,14 +72,19 @@ class ImportService:
     def _categorize(description: str, rules: list[CategoryRule], amount: float = 0.0, tx_type: str = "") -> tuple[str, bool]:
         lower_desc = description.lower()
         credit = amount > 0
+        investment = tx_type in ("investment_buy", "investment_sell")
         # 1. explicit rules, direction-aware (rules win over the transfer type).
         #    Neutral categories (deposit/transfer) match regardless of direction.
         #    Longest pattern first, so a specific rule ("Prime-Abonnement") beats a
-        #    generic substring ("Prime") when both match.
+        #    generic substring ("Prime") when both match. For investment rows, only
+        #    investment-category rules apply (a stock named "Apple" isn't a subscription).
         for rule in sorted(rules, key=lambda r: len(r.pattern), reverse=True):
-            if rule.pattern.lower() in lower_desc:
-                if rule.category in _NEUTRAL_CATEGORIES or credit == (rule.category in _INCOME_CATEGORIES):
-                    return rule.category, False
+            if rule.pattern.lower() not in lower_desc:
+                continue
+            if investment and rule.category not in _INVESTMENT_CATEGORIES:
+                continue
+            if rule.category in _NEUTRAL_CATEGORIES or credit == (rule.category in _INCOME_CATEGORIES):
+                return rule.category, False
         # 2. household self-transfers are internal
         if any(n in lower_desc for n in _HOUSEHOLD_NAMES):
             return "transfer", False

@@ -101,11 +101,21 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
     }).catch(() => {});
   }, []);
 
+  // Fetch from the server scoped to the active category + period, rather than relying
+  // on a single recent-500 client cache. With >500 rows total, an unscoped fetch drops
+  // the oldest months — so drilling into e.g. January (a category+month from Cash Flow)
+  // would show nothing. Scoping the query keeps the relevant rows in the set.
   useEffect(() => {
-    getTransactions(500).then(data => {
-      if (data.length > 0) { saveCache('transactions', data); setTx(_adaptTx(data)); }
+    const category = fCat !== 'all' ? fCat : undefined;
+    let period;
+    if (fRange.startsWith('m:')) period = { month: fRange.slice(2) };
+    else if (fRange !== 'all') period = { months: Math.ceil(+fRange / 30) + 1 };
+    getTransactions(500, category, period).then(data => {
+      // Only cache the broad (unscoped) set so next mount paints something representative.
+      if (!category) saveCache('transactions', data);
+      setTx(_adaptTx(data));
     }).catch(() => {});
-  }, []);
+  }, [fCat, fRange]);
 
   const filtered = useMemo(() => {
     const cut = fRange !== 'all' && !fRange.startsWith('m:')

@@ -48,6 +48,22 @@ def test_specific_rule_wins_over_generic_substring():
     assert cz("Prime-Abonnementgebühr", rules, -4.99, "expense") == ("investment_fees", False)
 
 
+def test_investment_buy_ignores_consumer_rules_on_security_names():
+    # Scalable buys carry the security name + ISIN, so a stock called "Apple"/"Netflix"
+    # must NOT match consumer subscription rules — only investment rules (ISIN->etf) apply.
+    rules = [
+        CategoryRule(pattern="APPLE", category="subscriptions"),
+        CategoryRule(pattern="Netflix", category="subscriptions"),
+        CategoryRule(pattern="IE00BLPK3577", category="etf"),
+    ]
+    cz = ImportService._categorize
+    assert cz("Kauf eines Finanzinstruments Apple (US0378331005)", rules, -266.30, "investment_buy") == ("trading", False)
+    assert cz("Kauf eines Finanzinstruments Netflix (US64110L1061)", rules, -255.09, "investment_buy") == ("trading", False)
+    assert cz("Kauf eines Finanzinstruments WisdomTree Cyber (IE00BLPK3577)", rules, -100.0, "investment_buy") == ("etf", False)
+    # a genuine Netflix subscription expense still categorizes normally
+    assert cz("Netflix monthly", rules, -17.99, "expense") == ("subscriptions", False)
+
+
 def test_deposit_rule_matches_both_directions():
     # A neutral "deposit" rule must catch both the incoming Kaution (credit) and the
     # refund (debit) — unlike income/expense rules which are direction-specific.

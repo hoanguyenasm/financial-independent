@@ -215,18 +215,22 @@ export function CashFlowScreen({ go, currency, household }) {
         <KpiCard label="Net saved" val={M(netSaved)} accent="var(--c-realestate)" icon="bolt" sub={savingsRate + '% savings rate'} />
       </div>
 
-      {/* INCOME VS EXPENSES */}
-      <section className="card" style={{ marginBottom: 18 }}>
-        <div className="card-h">
-          <div className="t"><b>Income vs expenses</b> · last 12 months</div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 16 }}>
-            <span className="legend-row"><i style={{ background: 'var(--pos)' }} />Income</span>
-            <span className="legend-row"><i style={{ background: 'var(--neg)' }} />Expenses</span>
+      {/* INCOME VS EXPENSES  +  INVESTMENT OVERVIEW (top row) */}
+      <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.5fr) minmax(340px, 1fr)', marginBottom: 18 }}>
+        <section className="card">
+          <div className="card-h">
+            <div className="t"><b>Income vs expenses</b> · last 12 months</div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 16 }}>
+              <span className="legend-row"><i style={{ background: 'var(--pos)' }} />Income</span>
+              <span className="legend-row"><i style={{ background: 'var(--neg)' }} />Expenses</span>
+            </div>
           </div>
-        </div>
-        <CashBars data={cf} h={232} selectedKey={view === 'monthly' ? monthSel : null}
-          onSelect={(d) => { if (!d.key) return; setView('monthly'); setMonthSel(d.key); }} />
-      </section>
+          <CashBars data={cf} h={232} selectedKey={view === 'monthly' ? monthSel : null}
+            onSelect={(d) => { if (!d.key) return; setView('monthly'); setMonthSel(d.key); }} />
+        </section>
+        <InvestmentOverview view={view} investBuys={investBuys} investSold={investSold}
+          periodInv={periodInv} investNet={investNet} M={M} MC={MC} setDrill={setDrill} />
+      </div>
 
       {/* INCOME SOURCES (donut + breakdown) */}
       <div className="grid" style={{ gridTemplateColumns: '340px 1fr', marginBottom: 18 }}>
@@ -365,59 +369,61 @@ export function CashFlowScreen({ go, currency, household }) {
         </section>
       </div>
 
-      {/* INVESTMENT OVERVIEW */}
-      <section className="card" style={{ marginBottom: 18 }}>
-        <div className="card-h">
-          <Icon n="trend" s={16} c="var(--accent)" />
-          <div className="t"><b>Investment overview</b> · money put to work {view === 'monthly' ? 'this month' : 'this year'}</div>
-          <span className="tag accent" style={{ marginLeft: 'auto' }}>Savings, not spending</span>
-        </div>
-        {investBuys.length === 0 && !investSold ? (
-          <div className="kpi-sub" style={{ padding: '24px 4px' }}>No investment activity recorded for this period.</div>
-        ) : (
-        <div className="grid" style={{ gridTemplateColumns: '280px 1fr', alignItems: 'center' }}>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <Donut segments={investBuys.map(s => ({ value: s.amount, color: s.color, label: s.name }))} size={168} stroke={24}
-              center={<><div className="num" style={{ fontSize: 22, fontWeight: 800 }}>{MC(periodInv)}</div><div className="kpi-sub">invested</div></>} />
+      {drill && <DrillModal catId={drill} currency={currency} household={household} onClose={() => setDrill(null)} go={go} rows={drillTxs} loading={drillLoading} month={view === 'monthly' ? monthSel : null} />}
+    </div>
+  );
+}
+
+function InvestmentOverview({ view, investBuys, investSold, periodInv, investNet, M, MC, setDrill }) {
+  return (
+    <section className="card">
+      <div className="card-h">
+        <Icon n="trend" s={16} c="var(--accent)" />
+        <div className="t"><b>Investment overview</b> · {view === 'monthly' ? 'this month' : 'this year'}</div>
+        <span className="tag accent" style={{ marginLeft: 'auto' }}>Savings</span>
+      </div>
+      {investBuys.length === 0 && !investSold ? (
+        <div className="kpi-sub" style={{ padding: '24px 4px' }}>No investment activity this period.</div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 12px' }}>
+            <Donut segments={investBuys.map(s => ({ value: s.amount, color: s.color, label: s.name }))} size={150} stroke={22}
+              center={<><div className="num" style={{ fontSize: 21, fontWeight: 800 }}>{MC(periodInv)}</div><div className="kpi-sub">invested</div></>} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {investBuys.map((s, i) => (
               <div key={s.id} className="clickable" onClick={() => setDrill(s.id)}
-                style={{ display: 'grid', gridTemplateColumns: '20px 1fr 140px 110px 18px', alignItems: 'center', gap: 12, padding: '11px 6px', borderBottom: i < investBuys.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color }} />
-                <div><b style={{ fontSize: 13.5 }}>{s.name}</b><div className="fx">{s.note}</div></div>
-                <div className="bar" style={{ height: 6 }}><i style={{ width: (s.amount / investBuys[0].amount * 100) + '%', background: s.color, boxShadow: 'none' }} /></div>
-                <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{M(s.amount)}</span>
-                <Icon n="chevR" s={13} c="var(--text-3)" />
+                style={{ display: 'grid', gridTemplateColumns: '14px 1fr 92px 16px', alignItems: 'center', gap: 10, padding: '9px 4px', borderBottom: i < investBuys.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color }} />
+                <div><b style={{ fontSize: 13 }}>{s.name}</b><div className="fx">{s.note}</div></div>
+                <span className="mono" style={{ textAlign: 'right', fontWeight: 800, fontSize: 13.5 }}>{M(s.amount)}</span>
+                <Icon n="chevR" s={12} c="var(--text-3)" />
               </div>
             ))}
-            <div className="spread" style={{ padding: '14px 6px 0' }}>
-              <b style={{ fontSize: 14 }}>Total invested</b>
-              <span className="num" style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>{M(periodInv)}</span>
+            <div className="spread" style={{ padding: '12px 4px 0' }}>
+              <b style={{ fontSize: 13.5 }}>Total invested</b>
+              <span className="num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)' }}>{M(periodInv)}</span>
             </div>
             {investSold && (
               <>
                 <div className="clickable spread" onClick={() => setDrill('investment_sell')}
-                  style={{ padding: '11px 6px', marginTop: 8, borderTop: '1px solid var(--border)' }}>
-                  <span className="row" style={{ gap: 10 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 3, background: investSold.color }} />
-                    <span><b style={{ fontSize: 13.5 }}>Sold / withdrawn</b><div className="fx">{investSold.note}</div></span>
+                  style={{ padding: '9px 4px', marginTop: 8, borderTop: '1px solid var(--border)' }}>
+                  <span className="row" style={{ gap: 9 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 3, background: investSold.color }} />
+                    <span><b style={{ fontSize: 13 }}>Sold / withdrawn</b><div className="fx">{investSold.note}</div></span>
                   </span>
-                  <span className="mono" style={{ fontWeight: 800, fontSize: 14, color: 'var(--neg)' }}>−{M(investSold.amount)}</span>
+                  <span className="mono" style={{ fontWeight: 800, fontSize: 13.5, color: 'var(--neg)' }}>−{M(investSold.amount)}</span>
                 </div>
-                <div className="spread" style={{ padding: '4px 6px 0' }}>
-                  <b style={{ fontSize: 14 }}>Net invested</b>
-                  <span className="num" style={{ fontSize: 18, fontWeight: 800, color: investNet >= 0 ? 'var(--accent)' : 'var(--neg)' }}>{M(investNet)}</span>
+                <div className="spread" style={{ padding: '4px 4px 0' }}>
+                  <b style={{ fontSize: 13.5 }}>Net invested</b>
+                  <span className="num" style={{ fontSize: 16, fontWeight: 800, color: investNet >= 0 ? 'var(--accent)' : 'var(--neg)' }}>{M(investNet)}</span>
                 </div>
               </>
             )}
           </div>
-        </div>
-        )}
-      </section>
-
-      {drill && <DrillModal catId={drill} currency={currency} household={household} onClose={() => setDrill(null)} go={go} rows={drillTxs} loading={drillLoading} month={view === 'monthly' ? monthSel : null} />}
-    </div>
+        </>
+      )}
+    </section>
   );
 }
 

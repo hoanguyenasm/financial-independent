@@ -208,6 +208,29 @@ def test_parse_scalable_signs():
     assert rows[1].amount == -150.0
 
 
+def test_parse_scalable_appends_security_and_isin():
+    """Scalable lists the security + ISIN on the line after each buy. The parser must
+    fold it into the description so ETF Sparplans can be told apart by ISIN (otherwise
+    every buy reads identically as 'Kauf eines Finanzinstruments')."""
+    lines = [
+        "Scalable Capital Bank GmbH",
+        "Buchung Wertstellung Beschreibung Betrag",
+        "04.12.2025 08.12.2025 Kauf eines Finanzinstruments -100,00 EUR",
+        "4,01 Stk. WisdomTree Cybersecurity (Acc) (IE00BLPK3577)",
+        "05.12.2025 09.12.2025 Kauf eines Finanzinstruments -340,80 EUR",
+        "8,00 Stk. Rocket Lab (US7731211089)",
+        "13.04.2026 13.04.2026 Überweisung +500,00 EUR",
+    ]
+    rows = _parse_scalable(lines)
+    assert len(rows) == 3
+    assert rows[0].amount == -100.0
+    assert "WisdomTree Cybersecurity" in rows[0].description
+    assert "IE00BLPK3577" in rows[0].description
+    assert "US7731211089" in rows[1].description
+    # a row without a 'Stk.' continuation keeps its plain description
+    assert rows[2].description == "Überweisung"
+
+
 def test_parse_amex_gutschrift_on_next_line():
     lines = [
         "American Express Kontoauszug 2026",

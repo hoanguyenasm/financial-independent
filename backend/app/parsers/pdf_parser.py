@@ -469,12 +469,16 @@ def _parse_revolut(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
 _SC_LINE = re.compile(
     r"^(\d{2}\.\d{2}\.\d{4})\s+\d{2}\.\d{2}\.\d{4}\s+(.+?)\s+([+-]?[\d.]+,\d{2})\s+EUR\s*$"
 )
+# The line under a buy/sell names the instrument: "4,01 Stk. WisdomTree Cybersecurity (Acc) (IE00BLPK3577)".
+_SC_SECURITY = re.compile(r"^[\d.,]+\s+Stk\.\s+(.+?\([A-Z]{2}[0-9A-Z]{9,10}\))\s*$")
 
 
 def _parse_scalable(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
-    """Scalable Capital: DD.MM.YYYY DD.MM.YYYY description ±amount EUR"""
+    """Scalable Capital: DD.MM.YYYY DD.MM.YYYY description ±amount EUR, with the
+    instrument name + ISIN on the following line for trades — folded into the
+    description so ETF Sparplans can be distinguished from one-off trades by ISIN."""
     rows: list[ParsedRow] = []
-    for line in lines:
+    for i, line in enumerate(lines):
         m = _SC_LINE.match(line.strip())
         if not m:
             continue
@@ -485,7 +489,12 @@ def _parse_scalable(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
             txn_date = datetime.strptime(m.group(1), "%d.%m.%Y").date()
         except ValueError:
             continue
-        rows.append(ParsedRow(date=txn_date, description=m.group(2).strip(), amount=amt, currency=currency))
+        desc = m.group(2).strip()
+        if i + 1 < len(lines):
+            sec = _SC_SECURITY.match(lines[i + 1].strip())
+            if sec:
+                desc = f"{desc} {sec.group(1).strip()}"
+        rows.append(ParsedRow(date=txn_date, description=desc, amount=amt, currency=currency))
     return rows
 
 

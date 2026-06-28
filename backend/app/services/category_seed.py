@@ -43,6 +43,14 @@ SEED_RULES: list[tuple[str, str]] = [
     ("Verwahrentgelt", "investment_fees"), ("Ordergebühr", "investment_fees"),
     # Scalable PRIME+ broker subscription fee — more specific than "Prime" (Amazon).
     ("Prime-Abonnement", "investment_fees"),
+    # ETF savings plans (Sparplan) run monthly on Scalable. Their broker buys all read
+    # "Kauf eines Finanzinstruments" — only the ISIN tells them apart from one-off trades,
+    # so match the ISIN (now folded into the description) to tag them as passive ETF.
+    ("IE00BLPK3577", "etf"),   # WisdomTree Cybersecurity
+    ("IE00BMC38736", "etf"),   # VanEck Semiconductor
+    ("IE000M7V94E1", "etf"),   # VanEck Uranium & Nuclear Technologies
+    ("DE000A2T0VU5", "etf"),   # Xtrackers Physical Gold ETC
+    ("IE000BI8OT95", "etf"),   # Amundi Core MSCI World
     # utilities
     ("Yello", "utilities"), ("Telekom", "utilities"), ("Vodafone", "utilities"),
     # mortgage (expense — must NOT be in _INCOME_CATEGORIES)
