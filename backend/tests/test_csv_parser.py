@@ -102,6 +102,17 @@ def test_parse_ing_csv_with_decimal_comma_amounts():
     assert rows[1].currency == "EUR"
 
 
+def test_parse_ing_csv_description_includes_counterparty_and_purpose():
+    """ING's export has separate Auftraggeber/Empfänger, Buchungstext and
+    Verwendungszweck columns. The description must combine them so categorization
+    can match the counterparty name and purpose, not just the booking text."""
+    rows = parse_csv(io.StringIO(ING_CSV))
+    rent = rows[1]
+    assert rent.amount == 990.00
+    assert "Yarob Abbas" in rent.description   # counterparty
+    assert "Die Miete" in rent.description      # purpose
+
+
 def test_comdirect_csv_with_preamble_and_umsatz_header():
     raw = (
         '\n'

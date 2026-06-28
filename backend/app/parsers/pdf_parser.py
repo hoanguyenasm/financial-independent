@@ -91,12 +91,32 @@ def _looks_like_amex(lines: list[str]) -> bool:
 
 _ING_LINE = re.compile(r"^(\d{2})\.(\d{2})\.(\d{4})\s+(.+?)\s+(-?[\d.]+,\d{2})\s*$")
 
+# "Umsatzanzeige" export layout: a transaction's first line carries the booking
+# date, counterparty, the running Saldo and the signed Betrag, both suffixed with €:
+#   29.06.2026 Yarob Abbas 990,00 € +990,00 €
+# The signed Betrag (the LAST €-amount) is the transaction amount.
+_ING_UMSATZ_LINE = re.compile(
+    r"^(\d{2})\.(\d{2})\.(\d{4})\s+(.+?)\s+-?[\d.]+,\d{2}\s*[€€]\s+([+-][\d.]+,\d{2})\s*[€€]\s*$"
+)
+# The line following the first carries the Wertstellung date + Buchungstext:
+#   28.06.2026 Echtzeitüberweisung
+_ING_UMSATZ_TEXT = re.compile(r"^\d{2}\.\d{2}\.\d{4}\s+(.+?)\s*$")
+# Page furniture interleaved between transactions across page breaks.
+_ING_NOISE = re.compile(r"^(\d/\d|Seite|Umsatzanzeige|Bank\b|Kontoname\b|IBAN\b|Buchung\b|"
+                        r"Wertstellun|gsdatum|Notiz|Erstellt am|Letztes Konto)", re.IGNORECASE)
+
 
 def _parse_ing(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
     """
-    ING Girokonto: DD.MM.YYYY TYPE DESCRIPTION amount
+    ING Girokonto (Kontoauszug): DD.MM.YYYY TYPE DESCRIPTION amount
     Last token is the amount; negative = expense, positive = income.
+
+    The 'Umsatzanzeige' export uses a different, multi-line layout — detect and
+    delegate to its dedicated parser.
     """
+    if any(_ING_UMSATZ_LINE.match(l.strip()) for l in lines):
+        return _parse_ing_umsatzanzeige(lines, currency)
+
     rows: list[ParsedRow] = []
     for line in lines:
         m = _ING_LINE.match(line.strip())
@@ -111,6 +131,58 @@ def _parse_ing(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
             rows.append(ParsedRow(date=date(y, mo, d), description=desc, amount=amt, currency=currency))
         except ValueError:
             continue
+    return rows
+
+
+def _parse_ing_umsatzanzeige(lines: list[str], currency: str = "EUR") -> list[ParsedRow]:
+    """
+    ING 'Umsatzanzeige' export, one transaction per 2-3 lines:
+        <Buchung> <Auftraggeber/Empfänger> <Saldo> € <±Betrag> €
+        <Wertstellung> <Buchungstext>
+        [<Verwendungszweck>]            (zero or more un-dated continuation lines)
+
+    Description combines Buchungstext + counterparty + purpose so categorization
+    can match the counterparty name and purpose (mirrors the Kontoauszug layout,
+    which already inlines the counterparty).
+    """
+    rows: list[ParsedRow] = []
+    i, n = 0, len(lines)
+    while i < n:
+        m = _ING_UMSATZ_LINE.match(lines[i].strip())
+        if not m:
+            i += 1
+            continue
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        counterparty = m.group(4).strip()
+        amt = _parse_amount_eu(m.group(5))
+
+        booking_text = ""
+        purpose_parts: list[str] = []
+        j = i + 1
+        # The immediately-following dated line is the Buchungstext; un-dated lines
+        # after it are the Verwendungszweck. Stop at the first noise line — past a
+        # page break only page furniture (reversed watermark, headers) remains.
+        while j < n:
+            nxt = lines[j].strip()
+            if _ING_UMSATZ_LINE.match(nxt) or _ING_NOISE.match(nxt):
+                break
+            mt = _ING_UMSATZ_TEXT.match(nxt)
+            if mt and not booking_text:
+                booking_text = mt.group(1).strip()
+            elif nxt:
+                purpose_parts.append(nxt)
+            j += 1
+        # Fast-forward over any page furniture to the next transaction.
+        while j < n and not _ING_UMSATZ_LINE.match(lines[j].strip()):
+            j += 1
+
+        desc = " ".join(filter(None, [booking_text, counterparty, *purpose_parts])).strip()
+        if amt is not None and desc:
+            try:
+                rows.append(ParsedRow(date=date(y, mo, d), description=desc, amount=amt, currency=currency))
+            except ValueError:
+                pass
+        i = j
     return rows
 
 

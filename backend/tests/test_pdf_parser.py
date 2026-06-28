@@ -91,6 +91,45 @@ def test_parse_ing_basic():
     assert rows[1].amount == -430.0
 
 
+def test_parse_ing_umsatzanzeige_multiline():
+    """ING 'Umsatzanzeige' PDF export: each transaction spans 2-3 lines —
+    'date counterparty saldo€ ±betrag€', then 'date buchungstext', then an
+    optional purpose line. The signed Betrag (last €-amount) is the amount."""
+    lines = [
+        "Umsatzanzeige",
+        "Bank ING",
+        "Buchung Auftraggeber/Empfänger Saldo Betrag",
+        "Wertstellun Buchungstext",
+        "29.06.2026 Yarob Abbas 990,00 € +990,00 €",
+        "27.06.2026 Gutschrift Echtzeitüberweisung",
+        "Die Miete",
+        "29.06.2026 Duc Hoa Nguyen 0,00 € -990,00 €",
+        "28.06.2026 Echtzeitüberweisung",
+    ]
+    rows = _parse_ing(lines)
+    assert len(rows) == 2
+    assert rows[0].date == date(2026, 6, 29)
+    assert rows[0].amount == 990.00
+    assert "Yarob Abbas" in rows[0].description
+    assert "Die Miete" in rows[0].description
+    assert rows[1].amount == -990.00
+    assert "Duc Hoa Nguyen" in rows[1].description
+
+
+def test_parse_ing_kontoauszug_still_works():
+    """The single-line Kontoauszug layout must keep parsing after adding the
+    multi-line Umsatzanzeige branch."""
+    lines = [
+        "Kontoauszug ING-DiBa",
+        "02.04.2026 Gutschrift Kadir Dora 430,00",
+        "07.04.2026 Echtzeit-überweisung Duc Hoa Nguyen -430,00",
+    ]
+    rows = _parse_ing(lines)
+    assert len(rows) == 2
+    assert rows[0].amount == 430.0
+    assert rows[1].amount == -430.0
+
+
 def test_parse_trade_republic_income_and_expense():
     lines = [
         "TRADE REPUBLIC BANK GMBH BRUNNENSTRASSE 19-21 10119 BERLIN",

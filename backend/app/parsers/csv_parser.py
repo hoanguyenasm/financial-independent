@@ -82,6 +82,14 @@ def _find_col(headers: list[str], candidates: set[str]) -> int | None:
     return None
 
 
+def _find_desc_cols(headers: list[str]) -> list[int]:
+    """All description-like columns, in header order. Banks like ING split the
+    counterparty, booking text and purpose across separate columns; combining
+    them keeps the name + purpose needed for categorization."""
+    return [i for i, h in enumerate(headers)
+            if h in _DESC_HEADERS or any(c in h for c in _DESC_HEADERS)]
+
+
 def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
     content = file.read()
     if isinstance(content, bytes):
@@ -101,6 +109,7 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
 
     date_col  = _find_col(headers, _DATE_HEADERS)
     desc_col  = _find_col(headers, _DESC_HEADERS)
+    desc_cols = _find_desc_cols(headers)
     amt_col   = _find_col(headers, _AMT_HEADERS)
     cur_col   = _find_col(headers, _CUR_HEADERS)
     debit_col = _find_col(headers, _DEBIT_HEADERS)
@@ -140,5 +149,13 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
 
         cur_value = cell(cur_col) if cur_col is not None else ""
         currency = cur_value if cur_value else default_currency
-        rows.append(ParsedRow(date=parsed_date, description=cell(desc_col), amount=amount, currency=currency))
+        # Combine every description column (counterparty + booking text + purpose),
+        # skipping blanks and duplicates while preserving header order.
+        parts: list[str] = []
+        for c in desc_cols:
+            v = cell(c)
+            if v and v not in parts:
+                parts.append(v)
+        description = " ".join(parts) if parts else cell(desc_col)
+        rows.append(ParsedRow(date=parsed_date, description=description, amount=amount, currency=currency))
     return rows
