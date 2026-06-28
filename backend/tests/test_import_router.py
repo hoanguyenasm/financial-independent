@@ -190,6 +190,42 @@ def test_import_from_tree_invalid_path(client):
     assert response.status_code == 422
 
 
+def test_reassign_import_log_moves_log_and_transactions(client):
+    """Reassigning an import moves the log AND every transaction it created to the
+    new account, leaving other accounts' transactions untouched."""
+    wrong = client.post("/accounts", json={"name": "Amex (Hoa)", "type": "credit", "currency": "EUR"}).json()
+    correct = client.post("/accounts", json={"name": "Scalable Broker (Hoa)", "type": "brokerage", "currency": "EUR"}).json()
+
+    file_bytes = CSV_CONTENT.encode("utf-8")
+    # Import into the wrong account (Amex)
+    up = client.post(
+        "/import",
+        data={"account_id": str(wrong["id"]), "user_id": "1"},
+        files={"file": ("scalable.csv", io.BytesIO(file_bytes), "text/csv")},
+    )
+    assert up.status_code == 201
+    log_id = up.json()["id"]
+    assert up.json()["rows_imported"] == 2
+
+    # Reassign the whole import to the correct account
+    resp = client.patch(f"/import/logs/{log_id}/account", json={"account_id": correct["id"]})
+    assert resp.status_code == 200
+    assert resp.json()["account_id"] == correct["id"]
+
+    # The log now belongs to the correct account, none left on the wrong one
+    assert len(client.get(f"/import/logs?account_id={correct['id']}").json()) == 1
+    assert len(client.get(f"/import/logs?account_id={wrong['id']}").json()) == 0
+
+    # All transactions from this import moved to the correct account
+    assert len(client.get(f"/transactions?account_id={wrong['id']}").json()) == 0
+    assert len(client.get(f"/transactions?account_id={correct['id']}").json()) == 2
+
+
+def test_reassign_import_log_not_found(client):
+    resp = client.patch("/import/logs/9999/account", json={"account_id": 2})
+    assert resp.status_code == 404
+
+
 def test_list_import_logs_filtered_by_account(client):
     file_bytes = CSV_CONTENT.encode("utf-8")
     client.post(

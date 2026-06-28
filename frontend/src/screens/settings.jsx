@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { DATA, FMT, FX } from '../data.js';
 import { Icon, Avatar, useToast } from '../ui.jsx';
-import { getSettings, updateSettings, getCategoryRules, updateCategoryRule, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, clearAllImportLogs, recategorizeAll } from '../lib/api.ts';
+import { getSettings, updateSettings, getCategoryRules, updateCategoryRule, deleteCategoryRule, importFile, importFromPath, getImportLogs, getAccounts, getFIGoal, upsertFIGoal, clearAllTransactions, deleteImportLog, reassignImportLog, clearAllImportLogs, recategorizeAll } from '../lib/api.ts';
 import { saveCache, loadCache, clearAllCache } from '../lib/cache.ts';
 
 export function SettingsScreen({ go, currency, setCurrency, initialTab }) {
@@ -83,6 +83,21 @@ function ImportTab() {
   };
 
   const loadHistory = () => getImportLogs().then(data => { saveCache('import_logs', data); setHistory(data); }).catch(() => {});
+
+  const handleReassign = async (log, newAccountId) => {
+    if (!newAccountId || newAccountId === log.account_id) return;
+    try {
+      const updated = await reassignImportLog(log.id, newAccountId);
+      clearAllCache(); // transactions moved accounts — invalidate cached views
+      const next = history.map(x => x.id === log.id ? { ...x, account_id: updated.account_id } : x);
+      saveCache('import_logs', next);
+      setHistory(next);
+      const acct = accounts.find(a => a.id === newAccountId);
+      showToast(`Moved import to ${acct ? acct.name : 'account ' + newAccountId}`, 'check');
+    } catch (err) {
+      showToast('Reassign failed: ' + (err.message || 'unknown'), 'x');
+    }
+  };
 
   const handleClearAll = async () => {
     if (!confirmClear) { setConfirmClear(true); return; }
@@ -311,18 +326,27 @@ function ImportTab() {
                   <tr key={h.id}>
                     <td><div className="row" style={{ gap: 9 }}><Icon n="doc" s={15} c="var(--text-3)" /><span style={{ fontWeight: 600 }}>{h.file || h.filename}</span></div></td>
                     <td className="t2" style={{ fontSize: 12.5 }}>
-                      {(() => {
-                        const a = accounts.find(x => x.id === h.account_id);
-                        const name = a?.name
-                          || (h.acct && DATA.ACCT[h.acct] ? DATA.ACCT[h.acct].name : null)
-                          || (h.account_id ? `Account ${h.account_id}` : '—');
-                        return (
-                          <span className="row" style={{ gap: 7 }}>
-                            {a && <span style={{ width: 7, height: 7, borderRadius: 2, background: `var(--c-${a.cls})` }} />}
-                            <span style={{ fontWeight: 600 }}>{name}</span>
-                          </span>
-                        );
-                      })()}
+                      {accounts.length > 0 ? (
+                        <span className="row" style={{ gap: 7 }}>
+                          {(() => {
+                            const a = accounts.find(x => x.id === h.account_id);
+                            return a && <span style={{ width: 7, height: 7, borderRadius: 2, background: `var(--c-${a.cls})`, flex: '0 0 auto' }} />;
+                          })()}
+                          <select
+                            className="inp"
+                            style={{ fontSize: 12, fontWeight: 600, padding: '2px 4px', maxWidth: 180 }}
+                            value={accounts.some(a => a.id === h.account_id) ? h.account_id : ''}
+                            title="Reassign this import to another account"
+                            onChange={e => handleReassign(h, Number(e.target.value))}>
+                            {!accounts.some(a => a.id === h.account_id) && (
+                              <option value="" disabled>{h.account_id ? `Account ${h.account_id}` : '—'}</option>
+                            )}
+                            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </select>
+                        </span>
+                      ) : (
+                        <span style={{ fontWeight: 600 }}>{h.account_id ? `Account ${h.account_id}` : '—'}</span>
+                      )}
                     </td>
                     <td className="mono" style={{ fontSize: 12, color: 'var(--text-2)' }}>{h.date || (h.imported_at ? new Date(h.imported_at).toLocaleDateString() : '—')}</td>
                     <td className="r mono" style={{ fontWeight: 700 }}>{h.rows || h.rows_imported || '—'}</td>

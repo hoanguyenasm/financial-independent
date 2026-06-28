@@ -16,6 +16,10 @@ class ImportLogRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ImportLogReassign(BaseModel):
+    account_id: int
+
+
 class PathImportResult(BaseModel):
     files_processed: int
     rows_imported: int

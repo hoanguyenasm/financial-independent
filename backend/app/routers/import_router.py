@@ -14,7 +14,7 @@ from app.services.import_service import ImportService
 from app.services.account_router import detect_owner, detect_owner_from_text, detect_bank, route_account
 from app.services.category_seed import seed_category_rules
 from app.models import ImportLog, Account, Transaction
-from app.schemas import ImportLogRead, PathImportResult, TreeImportResult
+from app.schemas import ImportLogRead, ImportLogReassign, PathImportResult, TreeImportResult
 
 router = APIRouter(prefix="/import", tags=["import"])
 
@@ -215,6 +215,24 @@ def list_import_logs(
     if account_id is not None:
         q = q.filter(ImportLog.account_id == account_id)
     return q.order_by(ImportLog.imported_at.desc()).all()
+
+
+@router.patch("/logs/{log_id}/account", response_model=ImportLogRead)
+def reassign_import_log(log_id: int, payload: ImportLogReassign, db: Session = Depends(get_db)):
+    """Move a whole import — its log and every transaction it created — to another
+    account. Used to correct an import that landed on the wrong account."""
+    log = db.get(ImportLog, log_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="Import log not found")
+    if db.get(Account, payload.account_id) is None:
+        raise HTTPException(status_code=404, detail="Target account not found")
+    db.query(Transaction).filter(Transaction.import_log_id == log_id).update(
+        {Transaction.account_id: payload.account_id}, synchronize_session=False
+    )
+    log.account_id = payload.account_id
+    db.commit()
+    db.refresh(log)
+    return log
 
 
 @router.delete("/logs/{log_id}", status_code=204)

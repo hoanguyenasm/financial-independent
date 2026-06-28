@@ -283,6 +283,13 @@ export const clearAllTransactions = () =>
 export const deleteImportLog = (id: number) =>
   api<void>(`/import/logs/${id}`, { method: 'DELETE' })
 
+export const reassignImportLog = (id: number, accountId: number) =>
+  api<ImportLogRead>(`/import/logs/${id}/account`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ account_id: accountId }),
+  })
+
 export const clearAllImportLogs = () =>
   api<void>('/import/logs', { method: 'DELETE' })
 
