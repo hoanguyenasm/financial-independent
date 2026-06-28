@@ -49,6 +49,9 @@ def _extract_text_lines(buf: io.BytesIO) -> list[str]:
 
 def _looks_like_ing(lines: list[str]) -> bool:
     header = "\n".join(lines[:40])
+    # CSV "Umsatzanzeige" export carries an explicit `Bank;ING` (or `Bank,ING`) line.
+    if any(re.match(r"\s*bank\s*[;,]\s*ing\b", l, re.IGNORECASE) for l in lines[:40]):
+        return True
     return "ING-DiBa" in header or (
         "IBAN" in header and any(re.match(r"\d{2}\.\d{2}\.\d{4}\s+\S", l) for l in lines[:40])
     )

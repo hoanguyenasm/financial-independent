@@ -34,6 +34,22 @@ def test_detect_bank_comdirect_csv():
     assert detect_bank("x.pdf", ["TRADE REPUBLIC", "DATUM TYP"]) == "trade_republic"
 
 
+def test_detect_bank_ing_csv():
+    # ING's CSV "Umsatzanzeige" export — signature is a `Bank;ING` line, not the
+    # ING-DiBa PDF header.
+    ing_csv_lines = [
+        "Umsatzanzeige;Datei erstellt am: 28.06.2026 12:21",
+        "",
+        "IBAN;DE46 5001 0517 5455 6766 79",
+        "Kontoname;Girokonto",
+        "Bank;ING",
+        "Kunde;Duc Hoa Nguyen",
+        "Buchung;Wertstellungsdatum;Auftraggeber/Empfänger;Buchungstext;Verwendungszweck;Saldo;Währung;Betrag;Währung",
+        "29.06.2026;28.06.2026;Duc Hoa Nguyen;Echtzeitüberweisung;;0,00;EUR;-990,00;EUR",
+    ]
+    assert detect_bank("ING_Umsatzanzeige_DE46_20260628.csv", ing_csv_lines) == "ing"
+
+
 def test_route_account_and_scalable_disambiguation(db, accounts):
     assert route_account(db, "ing", "Hoa", []) is not None
     assert route_account(db, "comdirect", "Hoa", []) is not None

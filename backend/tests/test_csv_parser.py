@@ -73,6 +73,35 @@ def test_malformed_amount_row_is_skipped():
     assert rows == []
 
 
+ING_CSV = """\
+Umsatzanzeige;Datei erstellt am: 28.06.2026 12:21
+
+IBAN;DE46 5001 0517 5455 6766 79
+Kontoname;Girokonto
+Bank;ING
+Kunde;Duc Hoa Nguyen
+Zeitraum;01.01.2026 - 28.06.2026
+Saldo;0,00;EUR
+
+Sortierung;Datum absteigend
+
+Buchung;Wertstellungsdatum;Auftraggeber/Empfänger;Buchungstext;Verwendungszweck;Saldo;Währung;Betrag;Währung
+29.06.2026;28.06.2026;Duc Hoa Nguyen;Echtzeitüberweisung;;0,00;EUR;-990,00;EUR
+27.06.2026;27.06.2026;Yarob Abbas;Gutschrift;Die Miete;990,00;EUR;990,00;EUR
+"""
+
+
+def test_parse_ing_csv_with_decimal_comma_amounts():
+    """ING's semicolon-delimited export uses comma decimals (-990,00), which used to
+    make the delimiter sniffer pick ',' and collapse every row into one field."""
+    rows = parse_csv(io.StringIO(ING_CSV))
+    assert len(rows) == 2
+    assert rows[0].date == date(2026, 6, 29)
+    assert rows[0].amount == -990.00
+    assert rows[1].amount == 990.00
+    assert rows[1].currency == "EUR"
+
+
 def test_comdirect_csv_with_preamble_and_umsatz_header():
     raw = (
         '\n'

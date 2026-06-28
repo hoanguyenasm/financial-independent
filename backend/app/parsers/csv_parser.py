@@ -1,5 +1,6 @@
 import csv
 import io
+from collections import Counter
 from datetime import date, datetime
 from typing import TextIO
 from .models import ParsedRow
@@ -23,11 +24,24 @@ _CREDIT_HEADERS = {"haben", "einnahme", "credit"}
 
 
 def _sniff_delimiter(sample: str) -> str:
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=";,\t|")
-        return dialect.delimiter
-    except csv.Error:
-        return ","
+    """Pick the delimiter that splits rows most consistently.
+
+    csv.Sniffer is unreliable on German bank exports because the decimal comma in
+    amounts like ``-990,00`` makes it prefer ``,``. Instead, for each candidate we
+    find the column count shared by the most lines and pick the delimiter with the
+    strongest, widest agreement.
+    """
+    lines = [l for l in sample.splitlines() if l.strip()][:50]
+    best, best_score = ",", (-1, -1)
+    for d in (";", "\t", "|", ","):
+        counts = [l.count(d) for l in lines if l.count(d) > 0]
+        if not counts:
+            continue
+        dominant, freq = Counter(counts).most_common(1)[0]
+        score = (freq, dominant)  # most lines agreeing, then widest split
+        if score > best_score:
+            best, best_score = d, score
+    return best
 
 
 def _parse_date(value: str) -> date | None:
@@ -72,7 +86,7 @@ def parse_csv(file: TextIO, default_currency: str = "EUR") -> list[ParsedRow]:
     content = file.read()
     if isinstance(content, bytes):
         content = content.decode("utf-8-sig")
-    delimiter = _sniff_delimiter(content[:1024])
+    delimiter = _sniff_delimiter(content[:8192])
 
     all_rows = list(csv.reader(io.StringIO(content), delimiter=delimiter))
     header_idx = None
