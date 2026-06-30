@@ -9,15 +9,20 @@ from app.models import Asset, Transaction, FIGoal, Account
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-# investment_sell is NOT income — proceeds from selling holdings belong in the
-# investment overview, not the income side of cash flow.
+# Category-based bucket classification — the category set by the user (or rules) is
+# authoritative. Type is an import-time heuristic that can fall out of sync when the
+# user re-categorises a transaction or a description doesn't match import keywords.
+_INCOME_CATS = frozenset({"income", "salary", "rental", "airbnb", "interest", "dividend"})
+# investment buys and sells — excluded from both income and expense buckets.
+_INVESTMENT_CATS = frozenset({"etf", "trading", "crypto", "gold", "investment_buy", "investment_sell"})
+# Neutral: internal account moves and deposits held on behalf of tenants.
+NEUTRAL_CATEGORIES = {"transfer", "deposit"}
+
+# Legacy type-based constants kept for the /summary endpoint only.
 INCOME_TYPES = {"income", "dividend", "interest"}
 EXPENSE_TYPES = {"expense", "fee"}
 PASSIVE_TYPES = {"dividend", "interest"}
 INVESTMENT_TYPES = {"investment_buy", "investment_sell"}
-# Categories that are neither income nor expense — internal account moves and rental
-# deposits (Kaution) we merely hold on behalf of a tenant. Excluded from all cash-flow math.
-NEUTRAL_CATEGORIES = {"transfer", "deposit"}
 
 
 def _months_ago(d: date, months: int) -> date:
@@ -35,7 +40,11 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
     txs = db.query(Transaction).filter(Transaction.date >= cutoff).all()
     buckets: dict[str, dict[str, float]] = defaultdict(lambda: {"income": 0.0, "expense": 0.0})
     for tx in txs:
-        if tx.category in NEUTRAL_CATEGORIES:  # internal movements / deposits are not income or expense
+        # Skip neutral movements and investment transactions regardless of their type.
+        # This prevents investment buys/sells that were mis-typed as "income"/"expense"
+        # (import heuristic failure or manual category edit without type update) from
+        # inflating the income or expense bars.
+        if tx.category in NEUTRAL_CATEGORIES or tx.category in _INVESTMENT_CATS:
             continue
         key = tx.date.strftime("%Y-%m")
         amount = _base_amount(tx)
@@ -59,14 +68,22 @@ def cashflow_monthly(months: int = Query(default=12, ge=1, le=60), db: Session =
     return result
 
 
-def _by_category(db: Session, types: set[str], months: int, month: Optional[str]):
-    """Aggregate transactions of the given types into per-category totals (abs base
-    amount) and counts, for either a single calendar month or a trailing window.
-    Neutral categories (transfers, deposits) are always excluded."""
-    q = db.query(Transaction).filter(
-        Transaction.type.in_(types),
-        Transaction.category.notin_(NEUTRAL_CATEGORIES),
-    )
+def _by_category(
+    db: Session,
+    months: int,
+    month: Optional[str],
+    include_cats: Optional[frozenset] = None,
+    exclude_cats: Optional[set] = None,
+):
+    """Aggregate transactions into per-category totals by category membership.
+    include_cats: only these categories (mutually exclusive with exclude_cats for the
+    main filter — neutral categories are always excluded regardless).
+    exclude_cats: skip transactions whose category is in this set."""
+    q = db.query(Transaction).filter(Transaction.category.notin_(NEUTRAL_CATEGORIES))
+    if include_cats is not None:
+        q = q.filter(Transaction.category.in_(include_cats))
+    if exclude_cats is not None:
+        q = q.filter(Transaction.category.notin_(exclude_cats))
     if month:
         y, m = (int(p) for p in month.split("-"))
         q = q.filter(
@@ -93,7 +110,9 @@ def expense_by_category(
     month: Optional[str] = Query(default=None, description="Single calendar month YYYY-MM"),
     db: Session = Depends(get_db),
 ):
-    return _by_category(db, EXPENSE_TYPES, months, month)
+    # Exclude income, investment, and neutral categories — only true expenses remain.
+    return _by_category(db, months, month,
+                        exclude_cats=_INCOME_CATS | _INVESTMENT_CATS | NEUTRAL_CATEGORIES)
 
 
 @router.get("/income-by-category")
@@ -102,7 +121,7 @@ def income_by_category(
     month: Optional[str] = Query(default=None, description="Single calendar month YYYY-MM"),
     db: Session = Depends(get_db),
 ):
-    return _by_category(db, INCOME_TYPES, months, month)
+    return _by_category(db, months, month, include_cats=_INCOME_CATS)
 
 
 @router.get("/investment-by-category")
@@ -113,7 +132,7 @@ def investment_by_category(
 ):
     # Buys (etf = passive Sparplan, trading = active) plus sells. The frontend separates
     # the "investment_sell" row (an inflow) from the buy categories (money deployed).
-    return _by_category(db, INVESTMENT_TYPES, months, month)
+    return _by_category(db, months, month, include_cats=_INVESTMENT_CATS)
 
 
 @router.get("/summary")

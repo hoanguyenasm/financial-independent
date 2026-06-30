@@ -70,13 +70,36 @@ def get_transaction(tx_id: int, db: Session = Depends(get_db)):
     return tx
 
 
+_CAT_TO_TYPE: dict[str, str] = {
+    "salary": "income", "rental": "income", "airbnb": "income", "income": "income",
+    "interest": "interest", "dividend": "dividend",
+    "etf": "investment_buy", "trading": "investment_buy",
+    "crypto": "investment_buy", "gold": "investment_buy", "investment_buy": "investment_buy",
+    "investment_sell": "investment_sell",
+    "investment_fees": "fee",
+    "transfer": "transfer", "deposit": "transfer",
+}
+
+
 @router.patch("/{tx_id}", response_model=TransactionRead)
 def update_transaction(tx_id: int, payload: TransactionUpdate, db: Session = Depends(get_db)):
     tx = db.get(Transaction, tx_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
+    data = payload.model_dump(exclude_none=True)
+    for field, value in data.items():
         setattr(tx, field, value)
+    # Sync type from category unless the caller explicitly provided a type.
+    if "category" in data and "type" not in data:
+        cat = data["category"]
+        inferred = _CAT_TO_TYPE.get(cat)
+        if inferred:
+            # investment buys are positive for sells, negative for buys — use amount sign.
+            if inferred == "investment_buy" and float(tx.amount) > 0:
+                inferred = "investment_sell"
+            tx.type = inferred
+        else:
+            tx.type = "expense"
     db.commit()
     db.refresh(tx)
     return tx

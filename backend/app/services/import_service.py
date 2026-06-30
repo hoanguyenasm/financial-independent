@@ -43,7 +43,7 @@ _DIVIDEND_KW = {
 _INCOME_CATEGORIES = {"salary", "rental", "airbnb", "interest", "dividend", "income"}
 # Categories that make sense for investment rows. Buys/sells carry the security name
 # (e.g. "Apple", "Netflix"), so consumer rules must be ignored for them — only these apply.
-_INVESTMENT_CATEGORIES = {"etf", "trading", "investment_sell", "investment_fees", "gold"}
+_INVESTMENT_CATEGORIES = {"etf", "trading", "crypto", "gold", "investment_buy", "investment_sell", "investment_fees"}
 # Neutral categories are direction-agnostic: a deposit (Kaution) or transfer rule must
 # match whether the money is coming in or going back out.
 _NEUTRAL_CATEGORIES = {"transfer", "deposit"}
