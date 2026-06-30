@@ -145,8 +145,8 @@ function DDItem({ on, onClick, dot, children }) {
 /* ---------------- top nav ---------------- */
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'home' },
-  { id: 'cashflow', label: 'Cash Flow', icon: 'cashflow' },
   { id: 'accounts', label: 'Accounts', icon: 'accounts' },
+  { id: 'cashflow', label: 'Cash Flow', icon: 'cashflow' },
   { id: 'transactions', label: 'Transactions', icon: 'tx' },
   { id: 'settings', label: 'Import & Settings', icon: 'settings' },
 ];
