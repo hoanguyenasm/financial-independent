@@ -350,6 +350,7 @@ function AssetModal({ initial, accounts, onClose, onSaved }) {
   const [value, setValue] = useState(initial.current_value ?? '');
   const [ownership, setOwnership] = useState(initial.ownership_pct ?? 100);
   const [assetCurrency, setAssetCurrency] = useState(initial.currency || 'EUR');
+  const [monthlyIncome, setMonthlyIncome] = useState(initial.expected_monthly_income ?? '');
   const [accountId, setAccountId] = useState(initial.account_id || (accounts[0] && accounts[0].id) || 1);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -359,6 +360,8 @@ function AssetModal({ initial, accounts, onClose, onSaved }) {
     if (!name.trim()) { setError('Name is required'); return; }
     if (Number.isNaN(v)) { setError('Value must be a number'); return; }
     if (Number.isNaN(o) || o < 0 || o > 100) { setError('Ownership must be 0–100'); return; }
+    const mi = monthlyIncome === '' ? null : parseFloat(monthlyIncome);
+    if (mi !== null && Number.isNaN(mi)) { setError('Monthly income must be a number'); return; }
     setSaving(true);
     setError('');
     try {
@@ -368,7 +371,8 @@ function AssetModal({ initial, accounts, onClose, onSaved }) {
         asset_type: type,
         current_value: v,
         ownership_pct: o,
-        currency: assetCurrency.trim() || 'EUR',
+        currency: assetCurrency.trim().toUpperCase() || 'EUR',
+        expected_monthly_income: mi,
         quantity: 1,
       };
       const saved = editing ? await updateAsset(initial.id, payload) : await createAsset(payload);
@@ -415,6 +419,16 @@ function AssetModal({ initial, accounts, onClose, onSaved }) {
           <div>
             <label className="fld">Ownership %</label>
             <input className="inp mono" placeholder="100" value={ownership} onChange={e => setOwnership(e.target.value)} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label className="fld">Currency</label>
+              <input className="inp mono" placeholder="EUR" maxLength={3} value={assetCurrency} onChange={e => setAssetCurrency(e.target.value)} />
+            </div>
+            <div>
+              <label className="fld">Monthly income (opt.)</label>
+              <input className="inp mono" placeholder="2100" value={monthlyIncome} onChange={e => setMonthlyIncome(e.target.value)} />
+            </div>
           </div>
           <div>
             <label className="fld">Account</label>
