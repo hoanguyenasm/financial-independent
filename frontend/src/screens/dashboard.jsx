@@ -8,6 +8,10 @@ import { Icon, Ring, Spark, AreaChart } from '../ui.jsx';
 import { getAnalyticsSummary, captureNWSnapshot, getNWSnapshots } from '../lib/api.ts';
 import { saveCache, loadCache } from '../lib/cache.ts';
 
+// Mock fallbacks used until the backend answers (or when it is offline).
+const MOCK_SAVINGS_SERIES = [40, 52, 46, 60, 50, 55, 48, 63, 54, 58, 51, 74];
+const MOCK_RENTAL_SERIES = [10, 13, 11, 16, 13, 18, 15, 20, 17, 22, 19, 24];
+
 export function DashboardScreen({ go, currency, household }) {
   const S = DATA.SUMMARY;
   const M = (v, dec) => FMT.display(currency, v, dec);
@@ -21,6 +25,13 @@ export function DashboardScreen({ go, currency, household }) {
   const [netWorth, setNetWorth] = useState(_cs?.net_worth ?? S.net_worth);
   const [fiTarget, setFiTarget] = useState(_cs?.fi_target ?? S.fi_target);
   const [baseMonthlySavings, setBaseMonthlySavings] = useState(_cs?.base_monthly_savings ?? S.base_monthly_savings);
+  const [invested, setInvested] = useState(_cs?.invested ?? S.invested);
+  const [reEquity, setReEquity] = useState(_cs?.re_equity ?? S.re_equity);
+  const [cash, setCash] = useState(_cs?.cash ?? S.cash);
+  const [savingsSeries, setSavingsSeries] = useState(_cs?.savings_series ?? MOCK_SAVINGS_SERIES);
+  const [savingsRateAvg, setSavingsRateAvg] = useState(_cs?.savings_rate_avg ?? S.savings_rate_avg);
+  const [rentalAvg, setRentalAvg] = useState(_cs?.rental_monthly_avg ?? S.rental_ttm);
+  const [rentalSeries, setRentalSeries] = useState(_cs?.rental_series ?? MOCK_RENTAL_SERIES);
   const [liveNW, setLiveNW] = useState(() => loadCache('nw_snapshots') ?? []);
 
   useEffect(() => {
@@ -34,6 +45,15 @@ export function DashboardScreen({ go, currency, household }) {
         if (s.net_worth > 0) setNetWorth(s.net_worth);
         if (s.fi_target > 0) setFiTarget(s.fi_target);
         if (s.base_monthly_savings > 0) setBaseMonthlySavings(s.base_monthly_savings);
+        if (s.net_worth > 0) { setInvested(s.invested); setReEquity(s.re_equity); setCash(s.cash); }
+        if (s.savings_series?.some(v => v !== 0)) {
+          setSavingsSeries(s.savings_series);
+          setSavingsRateAvg(s.savings_rate_avg);
+        }
+        if (s.rental_series?.some(v => v !== 0)) {
+          setRentalAvg(s.rental_monthly_avg);
+          setRentalSeries(s.rental_series);
+        }
       })
       .catch(() => {});
     captureNWSnapshot().catch(() => {});
@@ -53,7 +73,16 @@ export function DashboardScreen({ go, currency, household }) {
   const pct = fiTarget > 0 ? netWorth / fiTarget : 0;
 
   const coverage = passiveIncome / (monthlyExpenses || 1);
-  const savingsSeries = [40, 52, 46, 60, 50, 55, 48, 63, 54, 58, 51, 74];
+
+  // Net-worth change over the last ~month, from live snapshots when available.
+  const nwDelta = useMemo(() => {
+    if (liveNW.length < 2) return null;
+    const latest = liveNW[liveNW.length - 1];
+    const cutoff = new Date(latest.date);
+    cutoff.setDate(cutoff.getDate() - 30);
+    const ref = [...liveNW].reverse().find(s => new Date(s.date) <= cutoff) ?? liveNW[0];
+    return latest.net_worth - ref.net_worth;
+  }, [liveNW]);
 
   return (
     <div className="page rise">
@@ -71,7 +100,7 @@ export function DashboardScreen({ go, currency, household }) {
             <div className="num" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-3)', marginBottom: 7 }}>/ {M(fiTarget)}</div>
             <div className="tag accent" style={{ margin: '0 0 9px auto', fontSize: 14 }}>{(pct * 100).toFixed(1)}% there</div>
           </div>
-          <div className="fx" style={{ marginBottom: 22 }}>incl. {M(S.re_equity)} Stuttgart apartment · <span style={{ color: 'var(--pos)' }}>+{MC(9200)} this month</span></div>
+          <div className="fx" style={{ marginBottom: 22 }}>incl. {M(reEquity)} Stuttgart apartment{nwDelta != null && <> · <span style={{ color: nwDelta >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{nwDelta >= 0 ? '+' : '−'}{MC(Math.abs(nwDelta))} this month</span></>}</div>
 
           <div className="bar" style={{ height: 18 }}><i style={{ width: pct * 100 + '%' }} /></div>
           <div style={{ position: 'relative', height: 30, marginTop: 18 }}>
@@ -85,9 +114,9 @@ export function DashboardScreen({ go, currency, household }) {
 
           <div className="sep" style={{ margin: '26px 0 18px' }} />
           <div style={{ display: 'flex', gap: 34 }}>
-            <SubStat label="Invested assets" val={M(S.invested)} sub="42% of net worth" onClick={() => go('accounts')} />
-            <SubStat label="Real estate equity" val={M(S.re_equity)} sub="Stuttgart apartment · 100%" onClick={() => go('accounts')} />
-            <SubStat label="Cash & savings" val={M(S.cash)} sub="Comdirect · ING · Revolut" onClick={() => go('accounts')} />
+            <SubStat label="Invested assets" val={M(invested)} sub={netWorth > 0 ? Math.round(invested / netWorth * 100) + '% of net worth' : '—'} onClick={() => go('accounts')} />
+            <SubStat label="Real estate equity" val={M(reEquity)} sub="Stuttgart apartment · 100%" onClick={() => go('accounts')} />
+            <SubStat label="Cash & savings" val={M(cash)} sub={netWorth > 0 ? Math.round(cash / netWorth * 100) + '% of net worth' : '—'} onClick={() => go('accounts')} />
           </div>
         </div>
 
@@ -120,7 +149,6 @@ export function DashboardScreen({ go, currency, household }) {
             <div>
               <div className="num" style={{ fontSize: 19, fontWeight: 800 }}>{M(passiveIncome)}<span style={{ fontSize: 12, color: 'var(--text-3)' }}>/mo</span></div>
               <div className="kpi-sub">of {M(monthlyExpenses)} expenses</div>
-              <div className="tag pos sm" style={{ marginTop: 8 }}>+4% vs last yr</div>
             </div>
           </div>
         </div>
@@ -132,16 +160,16 @@ export function DashboardScreen({ go, currency, household }) {
             <div className="kpi-sub">this month</div>
           </div>
           <div className="mini-bars" style={{ marginTop: 12 }}>
-            {savingsSeries.map((v, i) => <i key={i} className={i === savingsSeries.length - 1 ? 'hl' : ''} style={{ height: v + '%' }} />)}
+            {savingsSeries.map((v, i) => <i key={i} className={i === savingsSeries.length - 1 ? 'hl' : ''} style={{ height: Math.max(0, Math.min(100, v)) + '%' }} />)}
           </div>
-          <div className="kpi-sub" style={{ marginTop: 10 }}>12-mo avg <b style={{ color: 'var(--text)' }}>{S.savings_rate_avg}%</b></div>
+          <div className="kpi-sub" style={{ marginTop: 10 }}>12-mo avg <b style={{ color: 'var(--text)' }}>{Math.round(savingsRateAvg)}%</b></div>
         </div>
 
         <div className="card tight">
           <div className="kpi-label">Rental & Airbnb income</div>
-          <div className="num" style={{ fontSize: 32, fontWeight: 800, marginTop: 12 }}>{M(S.rental_ttm)}<span style={{ fontSize: 13, color: 'var(--text-3)' }}>/mo</span></div>
+          <div className="num" style={{ fontSize: 32, fontWeight: 800, marginTop: 12 }}>{M(rentalAvg)}<span style={{ fontSize: 13, color: 'var(--text-3)' }}>/mo</span></div>
           <div className="fx" style={{ marginTop: 2 }}>trailing 12-mo net avg</div>
-          <div style={{ marginTop: 12 }}><Spark values={[10, 13, 11, 16, 13, 18, 15, 20, 17, 22, 19, 24]} color="var(--c-realestate)" h={38} /></div>
+          <div style={{ marginTop: 12 }}><Spark values={rentalSeries} color="var(--c-realestate)" h={38} /></div>
           <div className="kpi-sub" style={{ marginTop: 4 }}>Stuttgart apartment · Airbnb</div>
         </div>
 

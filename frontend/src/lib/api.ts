@@ -150,6 +150,13 @@ export interface AnalyticsSummary {
   needs_review: number
   fi_target: number
   base_monthly_savings: number
+  cash: number
+  invested: number
+  re_equity: number
+  savings_series: number[]      // 12 monthly rates in percent, oldest first
+  savings_rate_avg: number      // percent, avg over months with income
+  rental_monthly_avg: number
+  rental_series: number[]       // 12 monthly rental+airbnb sums, oldest first
 }
 
 export interface CashflowMonth {
