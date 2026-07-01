@@ -324,3 +324,15 @@ def test_summary_savings_and_rental_series(client):
     assert s["rental_monthly_avg"] == round(3000.0 / 12, 2)
     # avg over months WITH income only: (83.6 + 48.3) / 2
     assert s["savings_rate_avg"] == 65.9
+
+
+def test_passive_income_includes_rental_and_airbnb(client):
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    _tx(client, user_id, account_id, f"{m}-01", 120.0, "dividend", "dividend")
+    _tx(client, user_id, account_id, f"{m}-02", 2100.0, "income", "rental")
+    _tx(client, user_id, account_id, f"{m}-03", 900.0, "income", "airbnb")
+    _tx(client, user_id, account_id, f"{m}-04", 4000.0, "income", "salary")  # not passive
+
+    s = client.get("/analytics/summary").json()
+    assert s["passive_income_monthly"] == round((120.0 + 2100.0 + 900.0) / 12, 2)

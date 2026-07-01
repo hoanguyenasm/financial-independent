@@ -166,7 +166,12 @@ def summary(db: Session = Depends(get_db)):
     # neutral categories (transfers, deposits) are neither income nor expense
     income = sum(_base_amount(t) for t in txs if t.type in INCOME_TYPES and t.category not in NEUTRAL_CATEGORIES)
     expenses = sum(abs(_base_amount(t)) for t in txs if t.type in EXPENSE_TYPES and t.category not in NEUTRAL_CATEGORIES)
-    passive = sum(_base_amount(t) for t in txs if t.type in PASSIVE_TYPES)
+    # Passive income for FIRE = dividends/interest plus rental & airbnb cashflow.
+    passive = sum(
+        _base_amount(t) for t in txs
+        if (t.type in PASSIVE_TYPES or t.category in _RENTAL_CATS or t.category in ("dividend", "interest"))
+        and t.category not in NEUTRAL_CATEGORIES and _base_amount(t) > 0
+    )
     needs_review = db.query(Transaction).filter(Transaction.needs_review == True).count()  # noqa: E712
 
     # Per-month savings rate (%) and rental+airbnb income over the trailing 12 months
