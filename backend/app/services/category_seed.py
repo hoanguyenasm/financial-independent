@@ -66,6 +66,12 @@ SEED_RULES: list[tuple[str, str]] = [
     ("Kaution", "deposit"),
     ("Mietkaution", "deposit"),
     ("Deposit", "deposit"),
+    # refunds/returns credited back to us — money we already spent coming back, not new
+    # income. Amazon is the common case (order returns on the AmEx card); the "AMAZON"
+    # debit rule above still wins for purchases since categorization is direction-aware.
+    ("AMAZON", "reimbursement"),
+    ("Erstattung", "reimbursement"),
+    ("Rückerstattung", "reimbursement"),
 ]
 
 

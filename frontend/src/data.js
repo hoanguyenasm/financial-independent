@@ -132,6 +132,7 @@
     { id: 'loan', name: 'Loan repayment', kind: 'expense', group: 'Other', color: '#94A3B8' },
     // neutral movements — held on our behalf, not income or expense
     { id: 'deposit', name: 'Deposit (Kaution)', kind: 'transfer', group: 'Transfer', color: '#A78BFA' },
+    { id: 'reimbursement', name: 'Reimbursement', kind: 'transfer', group: 'Transfer', color: '#6EE7B7' },
     // system (display-only; not normally chosen by hand)
     { id: 'transfer', name: 'Transfer', kind: 'transfer', group: 'Transfer', color: '#94A3B8' },
     { id: 'uncategorized', name: 'Uncategorized', kind: 'expense', group: 'Other', color: 'var(--text-3)' },

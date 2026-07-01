@@ -47,6 +47,10 @@ _INVESTMENT_CATEGORIES = {"etf", "trading", "crypto", "gold", "investment_buy", 
 # Neutral categories are direction-agnostic: a deposit (Kaution) or transfer rule must
 # match whether the money is coming in or going back out.
 _NEUTRAL_CATEGORIES = {"transfer", "deposit"}
+# Categories that only make sense on a credit (money coming in). Reimbursement shares
+# this direction requirement with income, but must stay out of _INCOME_CATEGORIES since
+# it's not real income for cash-flow purposes (see analytics._INCOME_CATS).
+_CREDIT_ONLY_CATEGORIES = _INCOME_CATEGORIES | {"reimbursement"}
 _HOUSEHOLD_NAMES = ("duc hoa nguyen", "bao ngoc pham", "ngoc pham")
 
 
@@ -83,7 +87,7 @@ class ImportService:
                 continue
             if investment and rule.category not in _INVESTMENT_CATEGORIES:
                 continue
-            if rule.category in _NEUTRAL_CATEGORIES or credit == (rule.category in _INCOME_CATEGORIES):
+            if rule.category in _NEUTRAL_CATEGORIES or credit == (rule.category in _CREDIT_ONLY_CATEGORIES):
                 return rule.category, False
         # 2. household self-transfers are internal
         if any(n in lower_desc for n in _HOUSEHOLD_NAMES):

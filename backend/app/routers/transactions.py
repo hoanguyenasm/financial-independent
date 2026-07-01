@@ -77,7 +77,7 @@ _CAT_TO_TYPE: dict[str, str] = {
     "crypto": "investment_buy", "gold": "investment_buy", "investment_buy": "investment_buy",
     "investment_sell": "investment_sell",
     "investment_fees": "fee",
-    "transfer": "transfer", "deposit": "transfer",
+    "transfer": "transfer", "deposit": "transfer", "reimbursement": "transfer",
 }
 
 

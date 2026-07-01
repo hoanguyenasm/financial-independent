@@ -15,8 +15,9 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 _INCOME_CATS = frozenset({"income", "salary", "rental", "airbnb", "interest", "dividend"})
 # investment buys and sells — excluded from both income and expense buckets.
 _INVESTMENT_CATS = frozenset({"etf", "trading", "crypto", "gold", "investment_buy", "investment_sell"})
-# Neutral: internal account moves and deposits held on behalf of tenants.
-NEUTRAL_CATEGORIES = {"transfer", "deposit"}
+# Neutral: internal account moves, deposits held on behalf of tenants, and reimbursements
+# (money already spent coming back — not new income).
+NEUTRAL_CATEGORIES = {"transfer", "deposit", "reimbursement"}
 
 # Legacy type-based constants kept for the /summary endpoint only.
 INCOME_TYPES = {"income", "dividend", "interest"}

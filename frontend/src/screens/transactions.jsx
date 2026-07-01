@@ -61,16 +61,16 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
   }, [tx, myUserId]);
   const [q, setQ] = useState('');
   const [fAcct, setFAcct] = useState('all');
-  const [fCat, setFCat] = useState('all');
+  const [fCat, setFCat] = useState(() => initialFilter?.category || 'all');
   const [fUser, setFUser] = useState('all');
-  const [fRange, setFRange] = useState('365');
+  const [fRange, setFRange] = useState(() => initialFilter?.month ? 'm:' + initialFilter.month : '365');
   const last6Months = useMemo(() => {
     const months = [];
-    const d = new Date();
+    const now = new Date();
     for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       months.push({ value: `m:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
         label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) });
-      d.setMonth(d.getMonth() - 1);
     }
     return months;
   }, []);
@@ -106,15 +106,17 @@ export function TransactionsScreen({ go, currency, household, initialFilter, reg
   // the oldest months — so drilling into e.g. January (a category+month from Cash Flow)
   // would show nothing. Scoping the query keeps the relevant rows in the set.
   useEffect(() => {
+    let stale = false;
     const category = fCat !== 'all' ? fCat : undefined;
     let period;
     if (fRange.startsWith('m:')) period = { month: fRange.slice(2) };
     else if (fRange !== 'all') period = { months: Math.ceil(+fRange / 30) + 1 };
     getTransactions(500, category, period).then(data => {
-      // Only cache the broad (unscoped) set so next mount paints something representative.
+      if (stale) return;
       if (!category) saveCache('transactions', data);
       setTx(_adaptTx(data));
     }).catch(() => {});
+    return () => { stale = true; };
   }, [fCat, fRange]);
 
   const filtered = useMemo(() => {

@@ -73,6 +73,19 @@ def test_deposit_rule_matches_both_directions():
     assert cz("Kaution Rückzahlung", rules, -1500.0, "expense") == ("deposit", False)  # refunded
 
 
+def test_amazon_refund_categorized_as_reimbursement_not_shopping():
+    # Same "AMAZON" text on both a purchase (debit) and a refund (credit) — the
+    # direction-aware match must split them into "shopping" vs "reimbursement" rather
+    # than lumping refunds into generic "income".
+    rules = [
+        CategoryRule(pattern="AMAZON", category="shopping"),
+        CategoryRule(pattern="AMAZON", category="reimbursement"),
+    ]
+    cz = ImportService._categorize
+    assert cz("AMAZON.DE Order", rules, -45.99, "expense") == ("shopping", False)
+    assert cz("AMAZON.DE Erstattung", rules, 45.99, "income") == ("reimbursement", False)
+
+
 def test_savings_plan_buy_categorized_as_etf():
     cz = ImportService._categorize
     # Sparplan / savings plan execution = passive recurring ETF buy -> "etf"
