@@ -22,12 +22,13 @@ export function DashboardScreen({ go, currency, household }) {
   const [passiveIncome, setPassiveIncome] = useState(_cs?.passive_income_monthly ?? S.passive_income);
   const [monthlyExpenses, setMonthlyExpenses] = useState(_cs?.monthly_expenses ?? S.monthly_expenses);
   const [savingsRatePct, setSavingsRatePct] = useState(_cs ? Math.round(_cs.savings_rate * 100) : S.savings_rate_month);
-  const [netWorth, setNetWorth] = useState(_cs?.net_worth ?? S.net_worth);
-  const [fiTarget, setFiTarget] = useState(_cs?.fi_target ?? S.fi_target);
-  const [baseMonthlySavings, setBaseMonthlySavings] = useState(_cs?.base_monthly_savings ?? S.base_monthly_savings);
-  const [invested, setInvested] = useState(_cs?.invested ?? S.invested);
-  const [reEquity, setReEquity] = useState(_cs?.re_equity ?? S.re_equity);
-  const [cash, setCash] = useState(_cs?.cash ?? S.cash);
+  // Cached zeros mean "no data yet" for these — fall back to mock like the live guards do.
+  const [netWorth, setNetWorth] = useState(_cs?.net_worth > 0 ? _cs.net_worth : S.net_worth);
+  const [fiTarget, setFiTarget] = useState(_cs?.fi_target > 0 ? _cs.fi_target : S.fi_target);
+  const [baseMonthlySavings, setBaseMonthlySavings] = useState(_cs?.base_monthly_savings > 0 ? _cs.base_monthly_savings : S.base_monthly_savings);
+  const [invested, setInvested] = useState(_cs?.net_worth > 0 && _cs?.invested != null ? _cs.invested : S.invested);
+  const [reEquity, setReEquity] = useState(_cs?.net_worth > 0 && _cs?.re_equity != null ? _cs.re_equity : S.re_equity);
+  const [cash, setCash] = useState(_cs?.net_worth > 0 && _cs?.cash != null ? _cs.cash : S.cash);
   const [savingsSeries, setSavingsSeries] = useState(_cs?.savings_series?.some(v => v !== 0) ? _cs.savings_series : MOCK_SAVINGS_SERIES);
   const [savingsRateAvg, setSavingsRateAvg] = useState(_cs?.savings_rate_avg || S.savings_rate_avg);
   const [rentalAvg, setRentalAvg] = useState(_cs?.rental_series?.some(v => v !== 0) ? _cs.rental_monthly_avg : S.rental_ttm);

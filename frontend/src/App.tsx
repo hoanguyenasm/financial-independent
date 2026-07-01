@@ -4,6 +4,7 @@
 import { useState, useEffect, Component } from 'react'
 import type { ReactNode } from 'react'
 import { DATA } from './data.js'
+import { getAnalyticsSummary } from './lib/api.ts'
 import { TopNav } from './ui.jsx'
 import { DashboardScreen } from './screens/dashboard.jsx'
 import { CashFlowScreen } from './screens/cashflow.jsx'
@@ -59,6 +60,10 @@ export default function App() {
     document.querySelector('.scroll')?.scrollTo(0, 0)
   }
   useEffect(() => lset('household', household), [household])
+  // Live needs-review badge in the nav; keeps the mock count when offline.
+  useEffect(() => {
+    getAnalyticsSummary().then(s => setReviewCount(s.needs_review)).catch(() => {})
+  }, [])
 
   const common = { go, currency, household, setCurrency }
   let body
