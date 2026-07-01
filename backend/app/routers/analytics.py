@@ -135,19 +135,31 @@ def investment_by_category(
     return _by_category(db, months, month, include_cats=_INVESTMENT_CATS)
 
 
+# Real-estate asset types (both spellings exist in the data)
+_RE_ASSET_TYPES = {"realestate", "real_estate"}
+# Rental/airbnb income categories for the passive-income trend card
+_RENTAL_CATS = {"rental", "airbnb"}
+
+
 @router.get("/summary")
 def summary(db: Session = Depends(get_db)):
     accounts = db.query(Account).all()
-    deposits = sum(float(a.balance) for a in accounts
-                   if a.balance is not None and a.type != "credit_card")
+    cash = sum(float(a.balance) for a in accounts
+               if a.balance is not None and a.type not in ("credit_card", "investment"))
+    invested = sum(float(a.balance) for a in accounts
+                   if a.balance is not None and a.type == "investment")
     liabilities = sum(abs(float(a.balance)) for a in accounts
                       if a.balance is not None and a.type == "credit_card")
-    assets_val = sum(
-        float(a.current_value) * float(a.ownership_pct) / 100.0
-        for a in db.query(Asset).all()
-        if a.current_value is not None
-    )
-    net_worth = deposits - liabilities + assets_val
+    re_equity = 0.0
+    for a in db.query(Asset).all():
+        if a.current_value is None:
+            continue
+        val = float(a.current_value) * float(a.ownership_pct) / 100.0
+        if a.asset_type in _RE_ASSET_TYPES:
+            re_equity += val
+        else:
+            invested += val
+    net_worth = cash + invested + re_equity - liabilities
 
     cutoff = _months_ago(date.today(), 11)
     txs = db.query(Transaction).filter(Transaction.date >= cutoff).all()
@@ -156,6 +168,34 @@ def summary(db: Session = Depends(get_db)):
     expenses = sum(abs(_base_amount(t)) for t in txs if t.type in EXPENSE_TYPES and t.category not in NEUTRAL_CATEGORIES)
     passive = sum(_base_amount(t) for t in txs if t.type in PASSIVE_TYPES)
     needs_review = db.query(Transaction).filter(Transaction.needs_review == True).count()  # noqa: E712
+
+    # Per-month savings rate (%) and rental+airbnb income over the trailing 12 months
+    monthly = defaultdict(lambda: {"income": 0.0, "expense": 0.0, "rental": 0.0})
+    for t in txs:
+        if t.category in NEUTRAL_CATEGORIES or t.category in _INVESTMENT_CATS:
+            continue
+        key = t.date.strftime("%Y-%m")
+        amount = _base_amount(t)
+        if t.type in INCOME_TYPES:
+            monthly[key]["income"] += amount
+            if t.category in _RENTAL_CATS:
+                monthly[key]["rental"] += amount
+        elif t.type in EXPENSE_TYPES:
+            monthly[key]["expense"] += abs(amount)
+    today = date.today()
+    savings_series: list[float] = []
+    rental_series: list[float] = []
+    rates_with_income: list[float] = []
+    for i in range(11, -1, -1):
+        m = _months_ago(today, i).strftime("%Y-%m")
+        vals = monthly.get(m, {"income": 0.0, "expense": 0.0, "rental": 0.0})
+        if vals["income"] > 0:
+            rate = (vals["income"] - vals["expense"]) / vals["income"] * 100
+            rates_with_income.append(rate)
+        else:
+            rate = 0.0
+        savings_series.append(round(rate, 1))
+        rental_series.append(round(vals["rental"], 2))
 
     goal = db.query(FIGoal).filter(FIGoal.user_id == 1).first()
     fi_target = float(goal.target_net_worth) if goal and goal.target_net_worth else 0.0
@@ -168,4 +208,11 @@ def summary(db: Session = Depends(get_db)):
         "needs_review": needs_review,
         "fi_target": round(fi_target, 2),
         "base_monthly_savings": round((income - expenses) / 12, 2) if income > 0 else 0.0,
+        "cash": round(cash, 2),
+        "invested": round(invested, 2),
+        "re_equity": round(re_equity, 2),
+        "savings_series": savings_series,
+        "savings_rate_avg": round(sum(rates_with_income) / len(rates_with_income), 1) if rates_with_income else 0.0,
+        "rental_monthly_avg": round(sum(rental_series) / 12, 2),
+        "rental_series": rental_series,
     }

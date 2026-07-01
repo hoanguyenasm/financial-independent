@@ -96,6 +96,9 @@ def test_summary_empty_db(client):
         "net_worth": 0.0, "passive_income_monthly": 0.0,
         "monthly_expenses": 0.0, "savings_rate": 0.0, "needs_review": 0,
         "fi_target": 0.0, "base_monthly_savings": 0.0,
+        "cash": 0.0, "invested": 0.0, "re_equity": 0.0,
+        "savings_series": [0.0] * 12, "savings_rate_avg": 0.0,
+        "rental_monthly_avg": 0.0, "rental_series": [0.0] * 12,
     }
 
 
@@ -267,3 +270,57 @@ def test_net_worth_from_balances_and_assets(client, db):
     # 1000 + 500 - 300 (credit card liability) + 236000 = 237200
     nw = client.get("/analytics/summary").json()["net_worth"]
     assert nw == 237200.0
+
+
+def test_summary_net_worth_breakdown(client, db):
+    from app.models import Account, Asset
+    db.add(Account(name="Giro", type="checking", currency="EUR", balance=1000.00))
+    broker = Account(name="Broker", type="investment", currency="EUR", balance=500.00)
+    db.add(broker)
+    db.add(Account(name="AmEx", type="credit_card", currency="EUR", balance=300.00))
+    acc = Account(name="RE", type="checking", currency="EUR")
+    db.add(acc)
+    db.commit()
+    # ownership-weighted real estate: 200000 * 50% = 100000
+    db.add(Asset(account_id=acc.id, symbol_or_name="Apartment", asset_type="real_estate",
+                 quantity=1, current_value=200000.00, currency="EUR", ownership_pct=50.0))
+    # non-realestate asset counts as invested alongside broker balances
+    db.add(Asset(account_id=broker.id, symbol_or_name="VWCE", asset_type="etf",
+                 quantity=1, current_value=2000.00, currency="EUR", ownership_pct=100.0))
+    db.commit()
+    s = client.get("/analytics/summary").json()
+    assert s["cash"] == 1000.0
+    assert s["invested"] == 2500.0        # 500 broker balance + 2000 ETF asset
+    assert s["re_equity"] == 100000.0
+    # breakdown reconciles with net worth (minus the 300 credit-card liability)
+    assert s["net_worth"] == 1000.0 + 2500.0 + 100000.0 - 300.0
+
+
+def test_summary_savings_and_rental_series(client):
+    user_id, account_id = _setup(client)
+    m = date.today().strftime("%Y-%m")
+    prev = _months_ago_str(1)
+    # current month: income 4000, expenses 1000 -> rate 75%
+    _tx(client, user_id, account_id, f"{m}-01", 4000.0, "income", "salary")
+    _tx(client, user_id, account_id, f"{m}-02", -1000.0, "expense", "groceries")
+    # previous month: income 2000, expenses 1500 -> rate 25%
+    _tx(client, user_id, account_id, f"{prev}-01", 2000.0, "income", "salary")
+    _tx(client, user_id, account_id, f"{prev}-02", -1500.0, "expense", "groceries")
+    # rental + airbnb income
+    _tx(client, user_id, account_id, f"{m}-03", 2100.0, "income", "rental")
+    _tx(client, user_id, account_id, f"{prev}-03", 900.0, "income", "airbnb")
+
+    s = client.get("/analytics/summary").json()
+    assert len(s["savings_series"]) == 12
+    # current month: income 4000+2100, expenses 1000 -> (6100-1000)/6100 = 83.6%
+    assert s["savings_series"][-1] == 83.6
+    # previous month: income 2000+900, expenses 1500 -> (2900-1500)/2900 = 48.3%
+    assert s["savings_series"][-2] == 48.3
+    # months with no income stay at 0
+    assert s["savings_series"][0] == 0.0
+    assert len(s["rental_series"]) == 12
+    assert s["rental_series"][-1] == 2100.0
+    assert s["rental_series"][-2] == 900.0
+    assert s["rental_monthly_avg"] == round(3000.0 / 12, 2)
+    # avg over months WITH income only: (83.6 + 48.3) / 2
+    assert s["savings_rate_avg"] == 65.9
