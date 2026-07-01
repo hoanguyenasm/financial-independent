@@ -7,7 +7,8 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./fi_tracker.db"
     base_currency: str = "EUR"
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # 5174 is vite's automatic fallback port when 5173 is already in use
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"]
 
 
 settings = Settings()

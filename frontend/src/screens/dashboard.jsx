@@ -28,10 +28,10 @@ export function DashboardScreen({ go, currency, household }) {
   const [invested, setInvested] = useState(_cs?.invested ?? S.invested);
   const [reEquity, setReEquity] = useState(_cs?.re_equity ?? S.re_equity);
   const [cash, setCash] = useState(_cs?.cash ?? S.cash);
-  const [savingsSeries, setSavingsSeries] = useState(_cs?.savings_series ?? MOCK_SAVINGS_SERIES);
-  const [savingsRateAvg, setSavingsRateAvg] = useState(_cs?.savings_rate_avg ?? S.savings_rate_avg);
-  const [rentalAvg, setRentalAvg] = useState(_cs?.rental_monthly_avg ?? S.rental_ttm);
-  const [rentalSeries, setRentalSeries] = useState(_cs?.rental_series ?? MOCK_RENTAL_SERIES);
+  const [savingsSeries, setSavingsSeries] = useState(_cs?.savings_series?.some(v => v !== 0) ? _cs.savings_series : MOCK_SAVINGS_SERIES);
+  const [savingsRateAvg, setSavingsRateAvg] = useState(_cs?.savings_rate_avg || S.savings_rate_avg);
+  const [rentalAvg, setRentalAvg] = useState(_cs?.rental_series?.some(v => v !== 0) ? _cs.rental_monthly_avg : S.rental_ttm);
+  const [rentalSeries, setRentalSeries] = useState(_cs?.rental_series?.some(v => v !== 0) ? _cs.rental_series : MOCK_RENTAL_SERIES);
   const [liveNW, setLiveNW] = useState(() => loadCache('nw_snapshots') ?? []);
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export function DashboardScreen({ go, currency, household }) {
         if (s.net_worth > 0) setNetWorth(s.net_worth);
         if (s.fi_target > 0) setFiTarget(s.fi_target);
         if (s.base_monthly_savings > 0) setBaseMonthlySavings(s.base_monthly_savings);
-        if (s.net_worth > 0) { setInvested(s.invested); setReEquity(s.re_equity); setCash(s.cash); }
+        if (s.net_worth > 0 && s.invested != null) { setInvested(s.invested); setReEquity(s.re_equity); setCash(s.cash); }
         if (s.savings_series?.some(v => v !== 0)) {
           setSavingsSeries(s.savings_series);
           setSavingsRateAvg(s.savings_rate_avg);
@@ -100,7 +100,10 @@ export function DashboardScreen({ go, currency, household }) {
             <div className="num" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-3)', marginBottom: 7 }}>/ {M(fiTarget)}</div>
             <div className="tag accent" style={{ margin: '0 0 9px auto', fontSize: 14 }}>{(pct * 100).toFixed(1)}% there</div>
           </div>
-          <div className="fx" style={{ marginBottom: 22 }}>incl. {M(reEquity)} Stuttgart apartment{nwDelta != null && <> · <span style={{ color: nwDelta >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{nwDelta >= 0 ? '+' : '−'}{MC(Math.abs(nwDelta))} this month</span></>}</div>
+          <div className="fx" style={{ marginBottom: 22 }}>
+            {reEquity > 0 ? <>incl. {M(reEquity)} Stuttgart apartment</> : <>deposits & investments across the household</>}
+            {nwDelta != null && nwDelta !== 0 && <> · <span style={{ color: nwDelta >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{nwDelta >= 0 ? '+' : '−'}{MC(Math.abs(nwDelta))} this month</span></>}
+          </div>
 
           <div className="bar" style={{ height: 18 }}><i style={{ width: pct * 100 + '%' }} /></div>
           <div style={{ position: 'relative', height: 30, marginTop: 18 }}>
@@ -115,7 +118,7 @@ export function DashboardScreen({ go, currency, household }) {
           <div className="sep" style={{ margin: '26px 0 18px' }} />
           <div style={{ display: 'flex', gap: 34 }}>
             <SubStat label="Invested assets" val={M(invested)} sub={netWorth > 0 ? Math.round(invested / netWorth * 100) + '% of net worth' : '—'} onClick={() => go('accounts')} />
-            <SubStat label="Real estate equity" val={M(reEquity)} sub="Stuttgart apartment · 100%" onClick={() => go('accounts')} />
+            <SubStat label="Real estate equity" val={M(reEquity)} sub={reEquity > 0 ? 'Stuttgart apartment · 100%' : 'No property assets yet'} onClick={() => go('accounts')} />
             <SubStat label="Cash & savings" val={M(cash)} sub={netWorth > 0 ? Math.round(cash / netWorth * 100) + '% of net worth' : '—'} onClick={() => go('accounts')} />
           </div>
         </div>

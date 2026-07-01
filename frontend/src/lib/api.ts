@@ -1,6 +1,6 @@
 /* Thin client for the FastAPI backend. Every call may fail when the
    backend is offline — callers catch and keep working on mock data. */
-const BASE = 'http://localhost:8000'
+const BASE = import.meta.env?.VITE_API_BASE ?? 'http://localhost:8000'
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
